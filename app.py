@@ -65,10 +65,14 @@ from fpdf import FPDF
 if not hasattr(FPDF, '_original_multi_cell'):
     FPDF._original_multi_cell = FPDF.multi_cell
 
-def patched_multi_cell(self, w, *args, **kwargs):
+def patched_multi_cell(self, w, h=None, txt='', *args, **kwargs):
     if w == 0:
-        w = self.epw
-    return self._original_multi_cell(w, *args, **kwargs)
+        available_width = self.w - self.r_margin - self.x
+        if available_width < 5:
+            self.ln()
+            available_width = self.w - self.r_margin - self.x
+        w = available_width
+    return self._original_multi_cell(w, h, txt, *args, **kwargs)
 
 FPDF.multi_cell = patched_multi_cell
 # --- MONKEY PATCH END ---

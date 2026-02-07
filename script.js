@@ -146,11 +146,22 @@ import fpdf
 if not hasattr(FPDF, '_original_multi_cell'):
     FPDF._original_multi_cell = FPDF.multi_cell
 
-def patched_multi_cell(self, w, *args, **kwargs):
-    # If w is 0, use effective page width (epw)
+def patched_multi_cell(self, w, h=None, txt='', *args, **kwargs):
     if w == 0:
-        w = self.epw
-    return self._original_multi_cell(w, *args, **kwargs)
+        # Calculate available width from current x to right margin
+        available_width = self.w - self.r_margin - self.x
+        
+        # If available width is too small (e.g. < 5mm), assume we need a new line
+        # This handles the case where previous multi_cell left cursor at right margin.
+        if available_width < 5:
+            self.ln()
+            # After ln, x should be l_margin. Recalculate available width.
+            available_width = self.w - self.r_margin - self.x
+        
+        # Use explicit width to avoid fpdf2 errors/ambiguity
+        w = available_width
+        
+    return self._original_multi_cell(w, h, txt, *args, **kwargs)
 
 FPDF.multi_cell = patched_multi_cell
 # --- MONKEY PATCH END ---
