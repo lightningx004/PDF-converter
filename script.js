@@ -223,9 +223,21 @@ cleaned = clean_code(user_code, font_size)
 
 try:
     # Attempt to execute valid Python code
-    exec(cleaned)
-    
+    try:
+        exec(cleaned, globals())
+    except SyntaxError:
+        # HEURISTIC: Fix missing triple quote (User typo: "text"", -> "text""",)
+        import re
+        # Look for: non-quote char + "" + (comma or paren or newline)
+        fixed = re.sub(r'([^"])""(\s*[),])', r'\\1"""\\2', cleaned)
+        if fixed == cleaned:
+            raise # No fix possible, re-raise original error
+        
+        print("Warning: Detected potential missing quote. Attempting auto-fix...")
+        exec(fixed, globals())
+
     # Check if a PDF was actually generated
+    import glob
     pdfs = glob.glob("*.pdf")
     if not pdfs:
         raise Exception("No PDF generated")
