@@ -139,6 +139,21 @@ for f in glob.glob("*.pdf"):
 import glob
 import sys
 from fpdf import FPDF
+import fpdf
+
+# --- MONKEY PATCH START ---
+# Save original method
+if not hasattr(FPDF, '_original_multi_cell'):
+    FPDF._original_multi_cell = FPDF.multi_cell
+
+def patched_multi_cell(self, w, *args, **kwargs):
+    # If w is 0, use effective page width (epw)
+    if w == 0:
+        w = self.epw
+    return self._original_multi_cell(w, *args, **kwargs)
+
+FPDF.multi_cell = patched_multi_cell
+# --- MONKEY PATCH END ---
 
 cleaned = clean_code(user_code, font_size)
 
