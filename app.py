@@ -66,48 +66,51 @@ if not hasattr(FPDF, '_original_multi_cell'):
     FPDF._original_multi_cell = FPDF.multi_cell
 
 def patched_multi_cell(self, *args, **kwargs):
-    w = kwargs.get('w')
-    if w is None and len(args) > 0:
-        w = args[0]
-    
-    if w == 0:
-        available_width = self.w - self.r_margin - self.x
-        if available_width < 5:
-            self.ln()
-            available_width = self.w - self.r_margin - self.x
+    try:
+        w = kwargs.get('w')
+        if w is None and len(args) > 0:
+            w = args[0]
         
-        if kwargs.get('w') is not None:
-            kwargs['w'] = available_width
-        elif len(args) > 0:
-            args = (available_width,) + args[1:]
+        if w == 0:
+            available_width = self.w - self.r_margin - self.x
+            if available_width < 5:
+                self.ln()
+                available_width = self.w - self.r_margin - self.x
+            
+            if kwargs.get('w') is not None:
+                kwargs['w'] = available_width
+            elif len(args) > 0:
+                args = (available_width,) + args[1:]
+    except:
+        pass
     
     try:
         return self._original_multi_cell(*args, **kwargs)
-    except UnicodeEncodeError:
-        text = kwargs.get('text') or kwargs.get('txt')
-        text_arg_index = -1
-        
-        if text is None:
-            if len(args) >= 3:
-                text = args[2]
-                text_arg_index = 2
-        
-        if text:
-            try:
-                normalized = text.encode('latin-1', 'replace').decode('latin-1')
-                if kwargs.get('text') is not None:
-                    kwargs['text'] = normalized
-                elif kwargs.get('txt') is not None:
-                    kwargs['txt'] = normalized
-                elif text_arg_index != -1:
-                    args_list = list(args)
-                    args_list[text_arg_index] = normalized
-                    args = tuple(args_list)
-                return self._original_multi_cell(*args, **kwargs)
-            except:
-                pass
-        raise
     except Exception as e:
+        err_msg = str(e).lower()
+        if "outside the range" in err_msg or "codec can't encode" in err_msg or "character map" in err_msg:
+             try:
+                text = kwargs.get('text') or kwargs.get('txt')
+                text_arg_index = -1
+                
+                if text is None:
+                    if len(args) >= 3:
+                        text = args[2]
+                        text_arg_index = 2
+                
+                if text:
+                    normalized = text.encode('latin-1', 'replace').decode('latin-1')
+                    if kwargs.get('text') is not None:
+                        kwargs['text'] = normalized
+                    elif kwargs.get('txt') is not None:
+                        kwargs['txt'] = normalized
+                    elif text_arg_index != -1:
+                        args_list = list(args)
+                        args_list[text_arg_index] = normalized
+                        args = tuple(args_list)
+                    return self._original_multi_cell(*args, **kwargs)
+             except:
+                pass
         raise e
 
 FPDF.multi_cell = patched_multi_cell
