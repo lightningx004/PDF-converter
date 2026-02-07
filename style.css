@@ -505,10 +505,12 @@ textarea::placeholder {
 
     .btn {
         width: 100%;
-        height: 60px;
-        /* Taller for easier tapping */
-        font-size: 1.1rem;
-        /* Larger text */
+        height: 70px;
+        /* Even taller */
+        font-size: 1.25rem;
+        /* Much larger text */
+        font-weight: 700;
+        margin-top: 0.5rem;
     }
 
     .stats-row {
