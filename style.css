@@ -171,7 +171,7 @@ h1 {
     display: flex;
     position: relative;
     background: rgba(10, 10, 20, 0.4);
-    padding-right: 4px;
+    padding-right: 0;
     /* Inset scrollbar so it doesn't hit the rounded edge */
 }
 
@@ -487,25 +487,25 @@ textarea::placeholder {
     }
 }
 
-/* Scrollbar Styling */
+/* Scrollbar Styling - Simplified for Functionality */
 ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 12px;
 }
 
 ::-webkit-scrollbar-track {
-    background: transparent;
+    background: rgba(0, 0, 0, 0.2);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(118, 75, 162, 0.4);
-    border-radius: 5px;
-    border: 2px solid transparent;
+    background: rgba(118, 75, 162, 0.6);
+    border-radius: 6px;
+    border: 3px solid rgba(0, 0, 0, 0);
+    /* Creates padding around thumb */
     background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(118, 75, 162, 0.7);
-    border: 2px solid transparent;
+    background: rgba(118, 75, 162, 0.9);
+    border: 3px solid rgba(0, 0, 0, 0);
     background-clip: content-box;
 }
