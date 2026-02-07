@@ -164,6 +164,21 @@ def patched_multi_cell(self, w, h=None, txt='', *args, **kwargs):
     return self._original_multi_cell(w, h, txt, *args, **kwargs)
 
 FPDF.multi_cell = patched_multi_cell
+
+# --- UNICODE PATCH START ---
+if not hasattr(FPDF, '_original_normalize_text'):
+    FPDF._original_normalize_text = FPDF.normalize_text
+
+def patched_normalize_text(self, text):
+    try:
+        return self._original_normalize_text(text)
+    except:
+        # Fallback for characters not supported by the font (e.g. Emoji)
+        return text.encode('latin-1', 'replace').decode('latin-1')
+
+FPDF.normalize_text = patched_normalize_text
+# --- UNICODE PATCH END ---
+
 # --- MONKEY PATCH END ---
 
 cleaned = clean_code(user_code, font_size)
