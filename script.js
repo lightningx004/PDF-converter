@@ -146,7 +146,7 @@ import fpdf
 if not hasattr(FPDF, '_original_multi_cell'):
     FPDF._original_multi_cell = FPDF.multi_cell
 
-def patched_multi_cell(self, w, h=None, txt='', *args, **kwargs):
+def patched_multi_cell(self, w, h=None, text_content='', *args, **kwargs):
     if w == 0:
         # Calculate available width from current x to right margin
         available_width = self.w - self.r_margin - self.x
@@ -161,7 +161,16 @@ def patched_multi_cell(self, w, h=None, txt='', *args, **kwargs):
         # Use explicit width to avoid fpdf2 errors/ambiguity
         w = available_width
         
-    return self._original_multi_cell(w, h, txt, *args, **kwargs)
+    try:
+        return self._original_multi_cell(w, h, text_content, *args, **kwargs)
+    except UnicodeEncodeError:
+        # Emergency fallback for multi_cell if normalize_text didn't catch it
+        normalized = text_content.encode('latin-1', 'replace').decode('latin-1')
+        return self._original_multi_cell(w, h, normalized, *args, **kwargs)
+    except Exception as e:
+         # If it's still failing, might be the "Not enough space" again despite logic, or other.
+         # For now, let's just try to proceed.
+         raise e
 
 FPDF.multi_cell = patched_multi_cell
 
