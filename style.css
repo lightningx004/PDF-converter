@@ -171,6 +171,8 @@ h1 {
     display: flex;
     position: relative;
     background: rgba(10, 10, 20, 0.4);
+    padding-right: 4px;
+    /* Inset scrollbar so it doesn't hit the rounded edge */
 }
 
 .line-numbers {
