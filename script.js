@@ -224,25 +224,52 @@ FPDF.normalize_text = patched_normalize_text
 cleaned = clean_code(user_code, font_size)
 
 try:
-    # Attempt to execute valid Python code
+    # Execute Conversion
+    import sys
+    from io import StringIO
+    
+    # Capture stdout
+    old_stdout = sys.stdout
+    redirected_output = sys.stdout = StringIO()
+
     try:
-        exec(cleaned, globals())
-    except SyntaxError:
-        # HEURISTIC: Fix missing triple quote (User typo: "text"", -> "text""",)
-        import re
-        # Look for: non-quote char + "" + (comma or paren or newline)
-        fixed = re.sub(r'([^"])""(\s*[),])', r'\\1"""\\2', cleaned)
-        if fixed == cleaned:
-            raise # No fix possible, re-raise original error
-        
-        print("Warning: Detected potential missing quote. Attempting auto-fix...")
-        exec(fixed, globals())
+        # Attempt to execute valid Python code
+        try:
+            exec(cleaned, globals())
+        except SyntaxError:
+            # HEURISTIC: Fix missing triple quote (User typo: "text"", -> "text""",)
+            import re
+            fixed = re.sub(r'([^"])""(\s*[),])', r'\\1"""\\2', cleaned)
+            if fixed == cleaned:
+                raise
+            print("Warning: Detected potential missing quote. Attempting auto-fix...")
+            exec(fixed, globals())
+            
+    finally:
+        # Restore stdout
+        sys.stdout = old_stdout
 
     # Check if a PDF was actually generated
     import glob
     pdfs = glob.glob("*.pdf")
+    
+    # If no PDF found, check if we captured any output
     if not pdfs:
-        raise Exception("No PDF generated")
+        captured_text = redirected_output.getvalue()
+        if captured_text.strip():
+            # Generate PDF from captured text
+            pdf = FPDF()
+            pdf.add_page()
+            try:
+                pdf.set_font("Courier", size=int(font_size))
+            except:
+                pdf.set_font("Courier", size=12)
+            
+            pdf.multi_cell(0, 5, txt=captured_text)
+            pdf.output("output.pdf")
+            pdfs = ["output.pdf"]
+        else:
+            raise Exception("No PDF generated and no output printed.")
 
 except Exception as e:
     print(f"Execution failed ({e}), falling back to text conversion...")
