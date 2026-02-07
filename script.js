@@ -137,8 +137,38 @@ for f in glob.glob("*.pdf"):
             // Execute Conversion
             await pyodide.runPythonAsync(`
 import glob
+import sys
+from fpdf import FPDF
+
 cleaned = clean_code(user_code, font_size)
-exec(cleaned)
+
+try:
+    # Attempt to execute valid Python code
+    exec(cleaned)
+    
+    # Check if a PDF was actually generated
+    pdfs = glob.glob("*.pdf")
+    if not pdfs:
+        raise Exception("No PDF generated")
+
+except Exception as e:
+    print(f"Execution failed ({e}), falling back to text conversion...")
+    
+    # Fallback: Create PDF from text content
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Use Courier for code look
+    try:
+        pdf.set_font("Courier", size=int(font_size))
+    except:
+        pdf.set_font("Courier", size=12)
+        
+    # Multi_cell handles newlines automatically
+    # Effective page width = 210 - 2*10 (margins) = 190
+    pdf.multi_cell(0, 5, txt=user_code)
+    
+    pdf.output("output.pdf")
             `);
 
             // Check for PDF
