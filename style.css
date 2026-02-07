@@ -172,7 +172,8 @@ h1 {
     position: relative;
     background: rgba(10, 10, 20, 0.4);
     padding-right: 0;
-    /* Inset scrollbar so it doesn't hit the rounded edge */
+    overflow: hidden;
+    /* Ensure only textarea scrolls */
 }
 
 .line-numbers {
@@ -186,6 +187,8 @@ h1 {
     min-width: 3rem;
     user-select: none;
     border-right: 1px solid var(--glass-border);
+    overflow: hidden;
+    /* No scroll on line numbers */
 }
 
 textarea {
@@ -200,7 +203,8 @@ textarea {
     resize: none;
     outline: none;
     white-space: pre;
-    overflow-y: auto;
+    overflow-y: scroll;
+    /* Force scrollbar */
 }
 
 textarea::placeholder {
