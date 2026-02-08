@@ -269,7 +269,47 @@ try:
             pdf.output("output.pdf")
             pdfs = ["output.pdf"]
         else:
-            raise Exception("No PDF generated and no output printed.")
+            # HEURISTIC: Auto-Run (User forgot to call the function)
+            print("No output/PDF detected. checking for uncalled functions...")
+            import inspect
+            
+            # Find candidate functions
+            candidates = []
+            for name, obj in list(globals().items()):
+                if hasattr(obj, '__call__') and name not in ['old_globals', 'clean_code', 'FPDF', 'fpdf', 'StringIO', 'sys', 'os', 'glob', 're', 'patched_multi_cell', 'patched_normalize_text']:
+                     # Check if it was defined in user code (simple check: not built-in)
+                     if hasattr(obj, '__module__') and obj.__module__ is None: # Often None for exec'd code
+                         candidates.append(name)
+                     elif obj.__module__ == '__main__':
+                         candidates.append(name)
+
+            # Execution Loop
+            pdf_generated = False
+            for name in candidates:
+                try:
+                    func = globals()[name]
+                    sig = inspect.signature(func)
+                    params = len(sig.parameters)
+                    
+                    print(f"Auto-attempting function: {name} with {params} args")
+                    
+                    if params == 0:
+                        func()
+                    elif params == 1:
+                        func("output.pdf")
+                    else:
+                        continue # Skip complex functions
+                    
+                    if glob.glob("*.pdf"):
+                        pdf_generated = True
+                        break
+                except Exception as ex:
+                    print(f"Attempt failed for {name}: {ex}")
+            
+            if pdf_generated:
+                pdfs = glob.glob("*.pdf")
+            else:
+                raise Exception("No PDF generated. Auto-fix attempts failed.")
 
 except Exception as e:
     print(f"Execution failed ({e}), falling back to text conversion...")
