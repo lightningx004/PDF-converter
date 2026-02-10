@@ -5,7 +5,6 @@ import glob
 from flask import Flask, request, send_file, jsonify, render_template
 
 import re
-from io import BytesIO
 
 app = Flask(__name__)
 
@@ -224,7 +223,7 @@ if not pdf_files:
                          fixed_code = code
                          
                          # 1. Triple Quotes
-                         fixed_code = re.sub(r'([^ \t\n,=\(\[\{"])\"\"(\s*[),])', r'\1"""\2', fixed_code)
+                         fixed_code = re.sub(r'([^\"])\"\"(\s*[),])', r'\1"""\2', fixed_code)
                          
                          # 2. Incomplete Assignments
                          fixed_code = re.sub(r'(\s*[\w_][\w\d_]*\s*=\s*)(?=,)', r'\1[]', fixed_code)
@@ -234,8 +233,7 @@ if not pdf_files:
                          fixed_code = re.sub(r'(:\s*)(?=\})', r'\1[] ', fixed_code)
                          
                          # 4. Top-level Incomplete Assignment
-                         # Use [ \t]* to avoid eating newlines
-                         fixed_code = re.sub(r'^([ \t]*[\w_][\w\d_]*[ \t]*=[ \t]*)(?=$|#|\n)', r'\1[] # Auto-filled', fixed_code, flags=re.MULTILINE)
+                         fixed_code = re.sub(r'^(\s*[\w_][\w\d_]*\s*=\s*)(?=$|#|\n)', r'\1[] # Auto-filled', fixed_code, flags=re.MULTILINE)
                          
                          # 5. Newline in String (Smart Fix)
                          lines = fixed_code.split('\n')
