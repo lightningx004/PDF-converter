@@ -253,6 +253,19 @@ try:
             
             # Case D (Original): Top level assignment (x = \\n -> x = [])
             fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
+
+            # HEURISTIC 3: Fix "Newline in string" (User typo: "Text \n Text")
+            # If a line has an odd number of double quotes, it's likely an unclosed string.
+            # We append a backslash to escape the newline.
+            lines = fixed.split('\n')
+            fixed_lines = []
+            for line in lines:
+                # count quotes (ignoring escaped)
+                dq_count = line.count('"') - line.count(r'\"')
+                if dq_count % 2 == 1:
+                    line += " \\"
+                fixed_lines.append(line)
+            fixed = '\n'.join(fixed_lines)
             
             if fixed == cleaned:
                 raise
