@@ -206,7 +206,17 @@ if not pdf_files:
                  # Note: This is a bit aggressive to do via regex on the whole file without context, but it matches the script.js logic.
                  fixed_code = re.sub(r'([^\"])\"\"(\s*[),])', r'\1"""\2', fixed_code)
                  
-                 # HEURISTIC 2: Fix incomplete assignments
+                 # HEURISTIC 2: Fix incomplete assignments and dictionary values
+                 # Case A: Variable assignment with comma (x =, -> x = [],)
+                 fixed_code = re.sub(r'(\s*[\w_][\w\d_]*\s*=\s*)(?=,)', r'\1[]', fixed_code)
+                 
+                 # Case B: Dictionary/List missing value followed by comma (":," -> ": [],")
+                 fixed_code = re.sub(r'(:\s*)(?=,)', r'\1[]', fixed_code)
+                 
+                 # Case C: Dictionary missing value followed by closing brace (": }" -> ": [] }")
+                 fixed_code = re.sub(r'(:\s*)(?=\})', r'\1[] ', fixed_code)
+                 
+                 # Case D (Original): Top level assignment (x = \n -> x = [])
                  fixed_code = re.sub(r'^(\s*[\w_][\w\d_]*\s*=\s*)(?=$|#|\n)', r'\1[] # Auto-filled', fixed_code, flags=re.MULTILINE)
                  
                  if fixed_code != code:

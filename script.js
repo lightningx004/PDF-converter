@@ -241,8 +241,17 @@ try:
             import re
             fixed = re.sub(r'([^"])""(\s*[),])', r'\\1"""\\2', cleaned)
             
-            # HEURISTIC 2: Fix incomplete assignments (User typo: "x =" -> "x = []")
-            # Look for lines ending in = (with optional comment/whitespace)
+            # HEURISTIC 2: Fix incomplete assignments and dictionary values
+            # Case A: Variable assignment with comma (x =, -> x = [],)
+            fixed = re.sub(r'(\s*[\w_][\w\d_]*\s*=\s*)(?=,)', r'\\1[]', fixed)
+            
+            # Case B: Dictionary/List missing value followed by comma (":," -> ": [],")
+            fixed = re.sub(r'(:\s*)(?=,)', r'\\1[]', fixed)
+            
+            # Case C: Dictionary missing value followed by closing brace (": }" -> ": [] }")
+            fixed = re.sub(r'(:\s*)(?=\})', r'\\1[] ', fixed)
+            
+            # Case D (Original): Top level assignment (x = \\n -> x = [])
             fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
             
             if fixed == cleaned:
