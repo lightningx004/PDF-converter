@@ -237,18 +237,18 @@ try:
         try:
             exec(cleaned, globals())
         except SyntaxError:
-        # HEURISTIC 1: Fix missing triple quote (User typo: "text"", -> "text""",)
-        import re
-        fixed = re.sub(r'([^"])""(\s*[),])', r'\\1"""\\2', cleaned)
-        
-        # HEURISTIC 2: Fix incomplete assignments (User typo: "x =" -> "x = None")
-        # Look for lines ending in = (with optional comment/whitespace)
-        fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1None # Auto-filled', fixed, flags=re.MULTILINE)
-        
-        if fixed == cleaned:
-            raise
-        print("Warning: Detected syntax error. Attempting auto-fix...")
-        exec(fixed, globals())
+            # HEURISTIC 1: Fix missing triple quote (User typo: "text"", -> "text""",)
+            import re
+            fixed = re.sub(r'([^"])""(\s*[),])', r'\\1"""\\2', cleaned)
+            
+            # HEURISTIC 2: Fix incomplete assignments (User typo: "x =" -> "x = None")
+            # Look for lines ending in = (with optional comment/whitespace)
+            fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1None # Auto-filled', fixed, flags=re.MULTILINE)
+            
+            if fixed == cleaned:
+                raise
+            print("Warning: Detected syntax error. Attempting auto-fix...")
+            exec(fixed, globals())
             
     finally:
         # Restore stdout
