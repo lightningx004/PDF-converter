@@ -237,12 +237,17 @@ try:
         try:
             exec(cleaned, globals())
         except SyntaxError:
-            # HEURISTIC: Fix missing triple quote (User typo: "text"", -> "text""",)
+            # HEURISTIC 1: Fix missing triple quote (User typo: "text"", -> "text""",)
             import re
             fixed = re.sub(r'([^"])""(\s*[),])', r'\\1"""\\2', cleaned)
+            
+            # HEURISTIC 2: Fix incomplete assignments (User broken code: "var =")
+            # Replace "var =" at end of line with "var = []" to prevent SyntaxError
+            fixed = re.sub(r'(\w+)\s*=\s*(\n|$)', r'\\1 = []\\2', fixed)
+            
             if fixed == cleaned:
                 raise
-            print("Warning: Detected potential missing quote. Attempting auto-fix...")
+            print("Warning: Detected syntax error. Attempting auto-fix (missing quotes or empty assignment)...")
             exec(fixed, globals())
             
     finally:
