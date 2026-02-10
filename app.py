@@ -185,13 +185,42 @@ if not pdf_files:
         try:
             # Execute the script in the temporary directory
             # Capture output for debugging
-            result = subprocess.run(
-                ['python', 'script.py'], 
-                cwd=temp_dir, 
-                capture_output=True, 
-                text=True, 
-                timeout=30 # Prevent infinite loops
-            )
+            def run_script():
+                return subprocess.run(
+                    ['python', 'script.py'], 
+                    cwd=temp_dir, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=30 # Prevent infinite loops
+                )
+            
+            result = run_script()
+            
+            # CHECK FOR SYNTAX ERROR & RETRY
+            if result.returncode != 0 and "SyntaxError" in result.stderr:
+                 print("App.py: SyntaxError detected. Applying Heuristics...")
+                 
+                 fixed_code = code
+                 
+                 # HEURISTIC 1: Fix missing triple quote (User typo: "text"", -> "text""",)
+                 # Note: This is a bit aggressive to do via regex on the whole file without context, but it matches the script.js logic.
+                 fixed_code = re.sub(r'([^\"])\"\"(\s*[),])', r'\1"""\2', fixed_code)
+                 
+                 # HEURISTIC 2: Fix incomplete assignments
+                 fixed_code = re.sub(r'^(\s*[\w_][\w\d_]*\s*=\s*)(?=$|#|\n)', r'\1None # Auto-filled', fixed_code, flags=re.MULTILINE)
+                 
+                 if fixed_code != code:
+                     print("App.py: Auto-Fix applied. Retrying...")
+                     # Re-write the script
+                     full_script = patch_code + "\n" + fixed_code + "\n" + auto_runner_code
+                     f.seek(0)
+                     f.truncate()
+                     f.write(full_script)
+                     f.flush()
+                     os.fsync(f.fileno()) # Ensure write is committed
+                     
+                     # Retry
+                     result = run_script()
             
             # Find the generated PDF file
             pdf_files = glob.glob(os.path.join(temp_dir, '*.pdf'))
