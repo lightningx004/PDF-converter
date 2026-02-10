@@ -243,8 +243,7 @@ try:
                 fixed = code
                 
                 # 1. Triple Quotes: "text"", -> "text""",
-                # We only match "" if preceded by a non-separator (avoids matching empty strings like var="")
-                fixed = re.sub(r'([^ \t\n,=\(\[\{"])\"\"(\s*[),])', r'\\1"""\\2', fixed)
+                fixed = re.sub(r'([^\"])\"\"(\s*[),])', r'\\1"""\\2', fixed)
                 
                 # 2. Incomplete Assignments: x =, -> x = [],
                 fixed = re.sub(r'(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=,)', r'\\1[]', fixed)
@@ -254,8 +253,7 @@ try:
                 fixed = re.sub(r'(:\\s*)(?=\\})', r'\\1[] ', fixed)
                 
                 # 4. Top-level Incomplete Assignment: x = \n -> x = []
-                # Use [ \t]* instead of \s* to avoid matching newlines and consuming them
-                fixed = re.sub(r'^([ \t]*[\\w_][\\w\\d_]*[ \t]*=[ \t]*)(?=$|#|\\n)', r'\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
+                fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
                 
                 # 5. Newline in String (Smart Fix)
                 lines = fixed.split('\n')
