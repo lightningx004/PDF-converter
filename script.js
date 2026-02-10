@@ -243,17 +243,19 @@ try:
                 fixed = code
                 
                 # 1. Triple Quotes: "text"", -> "text""",
-                fixed = re.sub(r'([^\"])\"\"(\s*[),])', r'\\1"""\\2', fixed)
+                # We only match "" if preceded by a non-separator (avoids matching empty strings like var="")
+                fixed = re.sub(r'([^ \t\n,=\(\[\{"])\"\"(\s*[),])', r'\\\\1"""\\\\2', fixed)
                 
                 # 2. Incomplete Assignments: x =, -> x = [],
-                fixed = re.sub(r'(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=,)', r'\\1[]', fixed)
+                fixed = re.sub(r'(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=,)', r'\\\\1[]', fixed)
                 
                 # 3. Incomplete Dict Values: key:, -> key: [],
-                fixed = re.sub(r'(:\\s*)(?=,)', r'\\1[]', fixed)
-                fixed = re.sub(r'(:\\s*)(?=\\})', r'\\1[] ', fixed)
+                fixed = re.sub(r'(:\\s*)(?=,)', r'\\\\1[]', fixed)
+                fixed = re.sub(r'(:\\s*)(?=\\})', r'\\\\1[] ', fixed)
                 
                 # 4. Top-level Incomplete Assignment: x = \n -> x = []
-                fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
+                # Use [ \t]* instead of \s* to avoid matching newlines and consuming them
+                fixed = re.sub(r'^([ \t]*[\\w_][\\w\\d_]*[ \t]*=[ \t]*)(?=$|#|\\n)', r'\\\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
                 
                 # 5. Newline in String (Smart Fix)
                 lines = fixed.split('\n')
@@ -261,7 +263,7 @@ try:
                 for line in lines:
                     # Ignore comments for quote counting
                     content = line.split('#')[0]
-                    dq_count = content.count('"') - content.count(r'\"')
+                    dq_count = content.count('"') - content.count(r'\\"')
                     
                     if dq_count % 2 == 1:
                         # Odd quotes -> Potential unclosed string
