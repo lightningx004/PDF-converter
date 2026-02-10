@@ -218,6 +218,29 @@ if not pdf_files:
                  
                  # Case D (Original): Top level assignment (x = \n -> x = [])
                  fixed_code = re.sub(r'^(\s*[\w_][\w\d_]*\s*=\s*)(?=$|#|\n)', r'\1[] # Auto-filled', fixed_code, flags=re.MULTILINE)
+
+                 # HEURISTIC 3: Fix "Newline in string" (User typo: "Text \n Text")
+                 # We append a backslash to escape the newline if line has odd number of quotes
+                 # AND the string doesn't look closed (followed by comma, paren, etc)
+                 lines = fixed_code.split('\n')
+                 fixed_lines = []
+                 for line in lines:
+                     # count quotes (ignoring escaped)
+                     dq_count = line.count('"') - line.count(r'\"')
+                     if dq_count % 2 == 1:
+                         # Odd number of quotes. Check if the last quote seems to be a closing one.
+                         last_quote_idx = line.rfind('"')
+                         # Look at what follows the last quote (ignoring trailing whitespace)
+                         trailing = line[last_quote_idx+1:].strip()
+                         # If followed only by comma, paren, brace, or comment, assume it's closed.
+                         if re.match(r'^[\),\]\}\s]*(#.*)?$', trailing):
+                             pass # It's closed, do nothing
+                         else:
+                             # It's open, escape the newline to continue the string
+                             line += " \\"
+                             
+                     fixed_lines.append(line)
+                 fixed_code = '\n'.join(fixed_lines)
                  
                  if fixed_code != code:
                      print("App.py: Auto-Fix applied. Retrying...")

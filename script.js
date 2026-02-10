@@ -256,14 +256,26 @@ try:
 
             # HEURISTIC 3: Fix "Newline in string" (User typo: "Text \n Text")
             # If a line has an odd number of double quotes, it's likely an unclosed string.
-            # We append a backslash to escape the newline.
+            # However, we must be careful not to escape the newline if the string is actually closed 
+            # (e.g. at the end of a function call).
+            
             lines = fixed.split('\n')
             fixed_lines = []
             for line in lines:
                 # count quotes (ignoring escaped)
                 dq_count = line.count('"') - line.count(r'\"')
                 if dq_count % 2 == 1:
-                    line += " \\"
+                    # Odd number of quotes. Check if the last quote seems to be a closing one.
+                    last_quote_idx = line.rfind('"')
+                    # Look at what follows the last quote (ignoring trailing whitespace)
+                    trailing = line[last_quote_idx+1:].strip()
+                    # If followed only by comma, paren, brace, or comment, assume it's closed.
+                    if re.match(r'^[\),\]\}\s]*(#.*)?$', trailing):
+                        pass # It's closed, do nothing
+                    else:
+                        # It's open, escape the newline to continue the string
+                        line += " \\"
+                        
                 fixed_lines.append(line)
             fixed = '\n'.join(fixed_lines)
             
