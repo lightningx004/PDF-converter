@@ -243,13 +243,13 @@ try:
             
             # HEURISTIC 2: Fix incomplete assignments and dictionary values
             # Case A: Variable assignment with comma (x =, -> x = [],)
-            fixed = re.sub(r'(\s*[\w_][\w\d_]*\s*=\s*)(?=,)', r'\\1[]', fixed)
+            fixed = re.sub(r'(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=,)', r'\\1[]', fixed)
             
             # Case B: Dictionary/List missing value followed by comma (":," -> ": [],")
-            fixed = re.sub(r'(:\s*)(?=,)', r'\\1[]', fixed)
+            fixed = re.sub(r'(:\\s*)(?=,)', r'\\1[]', fixed)
             
             # Case C: Dictionary missing value followed by closing brace (": }" -> ": [] }")
-            fixed = re.sub(r'(:\s*)(?=\})', r'\\1[] ', fixed)
+            fixed = re.sub(r'(:\\s*)(?=\\})', r'\\1[] ', fixed)
             
             # Case D (Original): Top level assignment (x = \\n -> x = [])
             fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
