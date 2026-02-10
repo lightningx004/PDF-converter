@@ -225,8 +225,9 @@ if not pdf_files:
                  lines = fixed_code.split('\n')
                  fixed_lines = []
                  for line in lines:
-                     # count quotes (ignoring escaped)
-                     dq_count = line.count('"') - line.count(r'\"')
+                     # count quotes (ignoring escaped) in non-comment part
+                     content = line.split('#')[0]
+                     dq_count = content.count('"') - content.count(r'\"')
                      if dq_count % 2 == 1:
                          # Odd number of quotes. Check if the last quote seems to be a closing one.
                          last_quote_idx = line.rfind('"')
