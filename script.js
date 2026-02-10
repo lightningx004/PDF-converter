@@ -237,52 +237,12 @@ try:
         try:
             exec(cleaned, globals())
         except SyntaxError:
-            # HEURISTIC 1: Fix missing triple quote (User typo: "text"", -> "text""",)
+            # HEURISTIC: Fix missing triple quote (User typo: "text"", -> "text""",)
             import re
             fixed = re.sub(r'([^"])""(\s*[),])', r'\\1"""\\2', cleaned)
-            
-            # HEURISTIC 2: Fix incomplete assignments and dictionary values
-            # Case A: Variable assignment with comma (x =, -> x = [],)
-            fixed = re.sub(r'(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=,)', r'\\1[]', fixed)
-            
-            # Case B: Dictionary/List missing value followed by comma (":," -> ": [],")
-            fixed = re.sub(r'(:\\s*)(?=,)', r'\\1[]', fixed)
-            
-            # Case C: Dictionary missing value followed by closing brace (": }" -> ": [] }")
-            fixed = re.sub(r'(:\\s*)(?=\\})', r'\\1[] ', fixed)
-            
-            # Case D (Original): Top level assignment (x = \\n -> x = [])
-            fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
-
-            # HEURISTIC 3: Fix "Newline in string" (User typo: "Text \n Text")
-            # If a line has an odd number of double quotes, it's likely an unclosed string.
-            # However, we must be careful not to escape the newline if the string is actually closed 
-            # (e.g. at the end of a function call).
-            
-            lines = fixed.split('\n')
-            fixed_lines = []
-            for line in lines:
-                # count quotes (ignoring escaped) in non-comment part
-                content = line.split('#')[0]
-                dq_count = content.count('"') - content.count(r'\"')
-                if dq_count % 2 == 1:
-                    # Odd number of quotes. Check if the last quote seems to be a closing one.
-                    last_quote_idx = line.rfind('"')
-                    # Look at what follows the last quote (ignoring trailing whitespace)
-                    trailing = line[last_quote_idx+1:].strip()
-                    # If followed only by comma, paren, brace, or comment, assume it's closed.
-                    if re.match(r'^[\),\]\}\s]*(#.*)?$', trailing):
-                        pass # It's closed, do nothing
-                    else:
-                        # It's open, escape the newline to continue the string
-                        line += " \\"
-                        
-                fixed_lines.append(line)
-            fixed = '\n'.join(fixed_lines)
-            
             if fixed == cleaned:
                 raise
-            print("Warning: Detected syntax error. Attempting auto-fix...")
+            print("Warning: Detected potential missing quote. Attempting auto-fix...")
             exec(fixed, globals())
             
     finally:
