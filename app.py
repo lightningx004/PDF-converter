@@ -207,7 +207,7 @@ if not pdf_files:
                  fixed_code = re.sub(r'([^\"])\"\"(\s*[),])', r'\1"""\2', fixed_code)
                  
                  # HEURISTIC 2: Fix incomplete assignments
-                 fixed_code = re.sub(r'^(\s*[\w_][\w\d_]*\s*=\s*)(?=$|#|\n)', r'\1None # Auto-filled', fixed_code, flags=re.MULTILINE)
+                 fixed_code = re.sub(r'^(\s*[\w_][\w\d_]*\s*=\s*)(?=$|#|\n)', r'\1[] # Auto-filled', fixed_code, flags=re.MULTILINE)
                  
                  if fixed_code != code:
                      print("App.py: Auto-Fix applied. Retrying...")
