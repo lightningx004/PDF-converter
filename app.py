@@ -192,32 +192,6 @@ if not pdf_files:
                 text=True, 
                 timeout=30 # Prevent infinite loops
             )
-
-            # HEURISTIC: Check for SyntaxError in stderr (because we're running subprocess)
-            # HEURISTIC: Check for SyntaxError in stderr (because we're running subprocess)
-            if result.returncode != 0 and "SyntaxError:" in result.stderr:
-                 print("Syntax Error detected. Attempting auto-fix...")
-                 import re
-                 # Fix incomplete assignments: "var =" -> "var = []"
-                 fixed_code = re.sub(r'(\w+)\s*=\s*(\n|$)', r'\1 = []\2', code)
-                 
-                 # Fix missing triple quotes
-                 fixed_code = re.sub(r'([^\"])\"\"(\s*[),])', r'\1"""\2', fixed_code)
-                 
-                 if fixed_code != code:
-                     print("Applying auto-fix and retrying...")
-                     full_script = patch_code + "\n" + fixed_code + "\n" + auto_runner_code
-                     with open(os.path.join(temp_dir, 'script.py'), 'w', encoding='utf-8') as f:
-                        f.write(full_script)
-                        
-                     # Retry execution
-                     result = subprocess.run(
-                        ['python', 'script.py'], 
-                        cwd=temp_dir, 
-                        capture_output=True, 
-                        text=True, 
-                        timeout=30
-                    )
             
             # Find the generated PDF file
             pdf_files = glob.glob(os.path.join(temp_dir, '*.pdf'))
