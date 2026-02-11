@@ -129,58 +129,8 @@ FPDF.normalize_text = patched_normalize_text
 # --- UNICODE PATCH END ---
 
 # --- MONKEY PATCH END ---
-# --- END MONKEY PATCH ---
 """
-
-            auto_runner_code = """
-# --- AUTO-RUNNER LOGIC START ---
-import glob
-import inspect
-import sys
-import os
-
-pdf_files = glob.glob("*.pdf")
-if not pdf_files:
-    # Check if we printed anything (stdout is captured by runner, but we can check if sys.stdout has been written to?)
-    # Actually, we can just try to run functions if no PDF exists.
-    # Printing side-effects are fine.
-    
-    current_globals = dict(globals())
-    candidates = []
-    
-    for name, obj in current_globals.items():
-        if callable(obj) and name not in ['clean_code', 'patched_multi_cell', 'patched_normalize_text', 'FPDF', 'fpdf', 'glob', 'inspect', 'sys', 'os', 're', 'subprocess', 'tempfile']:
-             # Check if it was defined in the script (__main__)
-             if getattr(obj, '__module__', None) in (None, '__main__'):
-                 candidates.append(name)
-    
-    for name in candidates:
-        try:
-            func = current_globals[name]
-            sig = inspect.signature(func)
-            params = len(sig.parameters)
-            
-            if params == 0:
-                print(f"Auto-running {name}()...")
-                func()
-            elif params == 1:
-                print(f"Auto-running {name}('output.pdf')...")
-                func("output.pdf")
-            
-            if glob.glob("*.pdf"):
-                break
-        except:
-            pass
-# --- AUTO-RUNNER LOGIC END ---
-"""
-            
-            # Write key parts in order:
-            # 1. Monkey Patch (setup FPDF)
-            # 2. User Code (defines functions, maybe runs them)
-            # 3. Auto-Runner (if user code didn't produce PDF)
-            
-            full_script = patch_code + "\n" + code + "\n" + auto_runner_code
-            f.write(full_script)
+            f.write(patch_code + "\n" + code)
             
         try:
             # Execute the script in the temporary directory
@@ -193,100 +143,24 @@ if not pdf_files:
                 timeout=30 # Prevent infinite loops
             )
             
+            if result.returncode != 0:
+                return jsonify({'error': f"Execution failed:\n{result.stderr}"}), 400
+                
             # Find the generated PDF file
             pdf_files = glob.glob(os.path.join(temp_dir, '*.pdf'))
             
             if not pdf_files:
-                # No PDF file found. Check stdout.
-                stdout_content = result.stdout
-                if stdout_content and stdout_content.strip():
-                     # Generate PDF from stdout
-                     try:
-                        from fpdf import FPDF # FPDF is already imported in the patch_code, but this is fine.
-                        pdf = FPDF()
-                        pdf.add_page()
-                        pdf.set_font("Courier", size=12)
-                        pdf.multi_cell(0, 5, txt=stdout_content)
-                        stdout_pdf_path = os.path.join(temp_dir, "output_from_stdout.pdf")
-                        pdf.output(stdout_pdf_path)
-                        pdf_files = [stdout_pdf_path]
-                     except Exception as e:
-                        # If PDF generation from stdout fails, raise an error
-                        return jsonify({'error': f"Script executed, but no PDF was generated and failed to create PDF from stdout: {e}"}), 400
-                else:
-                    # HEURISTIC: Comprehensive Auto-Fix (Retry Mechanism)
-                    if result.returncode != 0 and "SyntaxError" in result.stderr:
-                         print("App.py: SyntaxError detected. Applying Auto-Fix...")
-                         
-                         # Define the fix logic inline (or call a helper if we had one)
-                         # We'll just apply the regexes here directly to `code`
-                         fixed_code = code
-                         
-                         # 1. Triple Quotes
-                         fixed_code = re.sub(r'([^\"])\"\"(\s*[),])', r'\1"""\2', fixed_code)
-                         
-                         # 2. Incomplete Assignments
-                         fixed_code = re.sub(r'(\s*[\w_][\w\d_]*\s*=\s*)(?=,)', r'\1[]', fixed_code)
-                         
-                         # 3. Incomplete Dict Values
-                         fixed_code = re.sub(r'(:\s*)(?=,)', r'\1[]', fixed_code)
-                         fixed_code = re.sub(r'(:\s*)(?=\})', r'\1[] ', fixed_code)
-                         
-                         # 4. Top-level Incomplete Assignment
-                         fixed_code = re.sub(r'^(\s*[\w_][\w\d_]*\s*=\s*)(?=$|#|\n)', r'\1[] # Auto-filled', fixed_code, flags=re.MULTILINE)
-                         
-                         # 5. Newline in String (Smart Fix)
-                         lines = fixed_code.split('\n')
-                         fixed_lines = []
-                         for line in lines:
-                             # Ignore comments
-                             content = line.split('#')[0]
-                             dq_count = content.count('"') - content.count(r'\"')
-                             
-                             if dq_count % 2 == 1:
-                                 # Odd quotes -> Potential unclosed string
-                                 last_quote = line.rfind('"')
-                                 trailing = line[last_quote+1:].strip()
-                                 # If not followed by closing chars, it's likely unclosed -> escape newline
-                                 if not re.match(r'^[\),\]\}\s]*$', trailing):
-                                      line += " \\"
-                             fixed_lines.append(line)
-                         fixed_code = '\n'.join(fixed_lines)
-                         
-                         if fixed_code != code:
-                             print("App.py: Auto-Fix applied. Retrying...")
-                             # Re-write the script
-                             full_script = patch_code + "\n" + fixed_code + "\n" + auto_runner_code
-                             
-                             # We need to write to the file again. subprocess.run doesn't change the file.
-                             # We need to assume 'script.py' is the file in temp_dir
-                             script_path = os.path.join(temp_dir, 'script.py')
-                             with open(script_path, 'w', encoding='utf-8') as f:
-                                 f.write(full_script)
-                             
-                             # Retry execution
-                             result = subprocess.run(
-                                ['python', 'script.py'], 
-                                cwd=temp_dir, 
-                                capture_output=True, 
-                                text=True, 
-                                timeout=30
-                             )
-                             
-                             # Check output again
-                             pdf_files = glob.glob(os.path.join(temp_dir, '*.pdf'))
-                             if pdf_files:
-                                 # Success after retry!
-                                 pass # Fall through to PDF handling
-
-                    if result.returncode != 0:
-                        return jsonify({'error': f"Execution failed:\n{result.stderr}"}), 400
-                    return jsonify({'error': 'No PDF file was generated. Ensure your code saves a PDF or prints output.'}), 400
+                return jsonify({'error': 'No PDF file was generated by the script. Ensure your code saves a PDF (e.g., output("file.pdf")).'}), 400
+                
+            # Return the first PDF found
+            # We must read it into memory or stream it before the temp dir is cleaned up
+             # However, send_file with a file path inside a closing verify might fail if not handled carefully
+            # A safer way is to read the content and send it as bytes, or keep the temp file open?
+            # Actually, flask's send_file can take a file object.
             
-            # If we reach here, pdf_files should contain at least one PDF path
             pdf_path = pdf_files[0]
-            
-            # Read the PDF into memory before the temporary directory is cleaned up
+            # Use a BytesIO object to hold the file in memory
+            from io import BytesIO
             with open(pdf_path, 'rb') as f:
                 pdf_data = BytesIO(f.read())
             

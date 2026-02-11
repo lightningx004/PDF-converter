@@ -31,8 +31,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             showToast('Installing fpdf2 library...', 'info');
             await micropip.install("fpdf2");
-            showToast('Installing reportlab library...', 'info');
-            await micropip.install("reportlab");
 
             showToast('Configuring environment...', 'info');
             // Define clean_code function in Python environment
@@ -224,129 +222,25 @@ FPDF.normalize_text = patched_normalize_text
 cleaned = clean_code(user_code, font_size)
 
 try:
-    # Execute Conversion
-    import sys
-    from io import StringIO
-    
-    # Capture stdout
-    old_stdout = sys.stdout
-    redirected_output = sys.stdout = StringIO()
-
+    # Attempt to execute valid Python code
     try:
-        # Attempt to execute valid Python code
-        try:
-            exec(cleaned, globals())
-        except SyntaxError:
-            # HEURISTIC: Comprehensive Auto-Fix
-            def fix_syntax(code):
-                import re
-                fixed = code
-                
-                # 1. Triple Quotes: "text"", -> "text""",
-                fixed = re.sub(r'([^\"])\"\"(\s*[),])', r'\\1"""\\2', fixed)
-                
-                # 2. Incomplete Assignments: x =, -> x = [],
-                fixed = re.sub(r'(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=,)', r'\\1[]', fixed)
-                
-                # 3. Incomplete Dict Values: key:, -> key: [],
-                fixed = re.sub(r'(:\\s*)(?=,)', r'\\1[]', fixed)
-                fixed = re.sub(r'(:\\s*)(?=\\})', r'\\1[] ', fixed)
-                
-                # 4. Top-level Incomplete Assignment: x = \n -> x = []
-                fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
-                
-                # 5. Newline in String (Smart Fix)
-                lines = fixed.split('\n')
-                fixed_lines = []
-                for line in lines:
-                    # Ignore comments for quote counting
-                    content = line.split('#')[0]
-                    dq_count = content.count('"') - content.count(r'\"')
-                    
-                    if dq_count % 2 == 1:
-                        # Odd quotes -> Potential unclosed string
-                        last_quote = line.rfind('"')
-                        trailing = line[last_quote+1:].strip()
-                        # If not followed by closing chars, it's likely unclosed -> escape newline
-                        if not re.match(r'^[\),\]\}\s]*$', trailing):
-                             line += " \\"
-                    fixed_lines.append(line)
-                
-                return '\n'.join(fixed_lines)
-
-            print("SyntaxError detected. Attempting Auto-Fix...")
-            fixed = fix_syntax(cleaned)
-            
-            if fixed == cleaned:
-                raise
-            
-            exec(fixed, globals())
-            
-    finally:
-        # Restore stdout
-        sys.stdout = old_stdout
+        exec(cleaned, globals())
+    except SyntaxError:
+        # HEURISTIC: Fix missing triple quote (User typo: "text"", -> "text""",)
+        import re
+        # Look for: non-quote char + "" + (comma or paren or newline)
+        fixed = re.sub(r'([^"])""(\s*[),])', r'\\1"""\\2', cleaned)
+        if fixed == cleaned:
+            raise # No fix possible, re-raise original error
+        
+        print("Warning: Detected potential missing quote. Attempting auto-fix...")
+        exec(fixed, globals())
 
     # Check if a PDF was actually generated
     import glob
     pdfs = glob.glob("*.pdf")
-    
-    # If no PDF found, check if we captured any output
     if not pdfs:
-        captured_text = redirected_output.getvalue()
-        if captured_text.strip():
-            # Generate PDF from captured text
-            pdf = FPDF()
-            pdf.add_page()
-            try:
-                pdf.set_font("Courier", size=int(font_size))
-            except:
-                pdf.set_font("Courier", size=12)
-            
-            pdf.multi_cell(0, 5, txt=captured_text)
-            pdf.output("output.pdf")
-            pdfs = ["output.pdf"]
-        else:
-            # HEURISTIC: Auto-Run (User forgot to call the function)
-            print("No output/PDF detected. checking for uncalled functions...")
-            import inspect
-            
-            # Find candidate functions
-            candidates = []
-            for name, obj in list(globals().items()):
-                if hasattr(obj, '__call__') and name not in ['old_globals', 'clean_code', 'FPDF', 'fpdf', 'StringIO', 'sys', 'os', 'glob', 're', 'patched_multi_cell', 'patched_normalize_text']:
-                     # Check if it was defined in user code (simple check: not built-in)
-                     if hasattr(obj, '__module__') and obj.__module__ is None: # Often None for exec'd code
-                         candidates.append(name)
-                     elif obj.__module__ == '__main__':
-                         candidates.append(name)
-
-            # Execution Loop
-            pdf_generated = False
-            for name in candidates:
-                try:
-                    func = globals()[name]
-                    sig = inspect.signature(func)
-                    params = len(sig.parameters)
-                    
-                    print(f"Auto-attempting function: {name} with {params} args")
-                    
-                    if params == 0:
-                        func()
-                    elif params == 1:
-                        func("output.pdf")
-                    else:
-                        continue # Skip complex functions
-                    
-                    if glob.glob("*.pdf"):
-                        pdf_generated = True
-                        break
-                except Exception as ex:
-                    print(f"Attempt failed for {name}: {ex}")
-            
-            if pdf_generated:
-                pdfs = glob.glob("*.pdf")
-            else:
-                raise Exception("No PDF generated. Auto-fix attempts failed.")
+        raise Exception("No PDF generated")
 
 except Exception as e:
     print(f"Execution failed ({e}), falling back to text conversion...")
