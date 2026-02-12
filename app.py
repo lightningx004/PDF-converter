@@ -5,8 +5,10 @@ import tempfile
 import os
 import subprocess
 import sys
-from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT
 import io
 
 # --- Page Config ---
@@ -108,31 +110,51 @@ def generate_pdf(code):
     # We convert to bytes just to be safe.
     return bytes(pdf.output(dest='S'))
 
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib.enums import TA_LEFT
+import io
+
+# ... (other imports)
+
 def generate_pdf_reportlab(code):
-    """Generates a PDF using ReportLab with line numbers and Courier font."""
+    """Generates a PDF using ReportLab with line numbers and Courier font via Platypus for wrapping."""
     buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                            rightMargin=40, leftMargin=40,
+                            topMargin=40, bottomMargin=40)
     
-    c.setFont("Courier", 10)
-    line_height = 12
-    margin_left = 40
-    margin_top = height - 40
-    y = margin_top
-    
+    styles = getSampleStyleSheet()
+    # Create a custom style for code
+    code_style = ParagraphStyle(
+        name='CodeStyle',
+        parent=styles['Normal'],
+        fontName='Courier',
+        fontSize=10,
+        leading=12,  # Line spacing
+        alignment=TA_LEFT,
+        wordWrap='CJK', # Allow breaking lines within words if needed, though 'LTR' is default
+    )
+
+    story = []
     lines = code.split('\n')
     
     for i, line in enumerate(lines, 1):
-        if y < 40:
-            c.showPage()
-            c.setFont("Courier", 10)
-            y = margin_top
-            
-        line_content = f"{i:>4}: {line}"
-        c.drawString(margin_left, y, line_content)
-        y -= line_height
+        # Escape HTML characters for Paragraph: <, >, &
+        safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        # Repace spaces with non-breaking spaces to preserve indentation?
+        # Paragraph collapses multiple spaces. We want to preserve them for code indentation.
+        # Replacing space with &nbsp;
+        safe_line = safe_line.replace(' ', '&nbsp;')
         
-    c.save()
+        line_content = f"{i:>4}:&nbsp;{safe_line}"
+        p = Paragraph(line_content, code_style)
+        story.append(p)
+        # story.append(Spacer(1, 1)) # Optional small spacer, but leading handles line height
+        
+    doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
 
