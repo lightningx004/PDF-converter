@@ -1,0 +1,21 @@
+{
+    "name": "Python to PDF Converter",
+    "short_name": "PyToPDF",
+    "start_url": "./index.html",
+    "display": "standalone",
+    "background_color": "#0f0c29",
+    "theme_color": "#302b63",
+    "description": "Instantly convert Python code to PDF with syntax highlighting.",
+    "icons": [
+        {
+            "src": "./logo.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "./logo.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}
