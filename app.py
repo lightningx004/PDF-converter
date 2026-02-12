@@ -5,6 +5,9 @@ import tempfile
 import os
 import subprocess
 import sys
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+import io
 
 # --- Page Config ---
 st.set_page_config(
@@ -83,6 +86,7 @@ class CodePDF(FPDF):
 def generate_pdf(code):
     """Generates a PDF with line numbers and Courier font."""
     pdf = CodePDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_font("Courier", size=10)
     
@@ -92,13 +96,53 @@ def generate_pdf(code):
     for i, line in enumerate(lines, 1):
         # Format: "  1: import os"
         line_content = f"{i:>4}: {line}"
-        # safe_line = line_content.encode('latin-1', 'replace').decode('latin-1') # Basic sanitization
-        pdf.multi_cell(0, line_height, txt=line_content)
+        # Use text= instead of txt= (fpdf2)
+        try:
+            # Explicitly set new_x and new_y to ensure carriage return to left margin
+            pdf.multi_cell(0, line_height, text=line_content, new_x="LMARGIN", new_y="NEXT")
+        except Exception as e:
+            st.error(f"Error generating PDF at line {i}: {e}")
+            raise e
         
-    return pdf.output(dest='S').encode('latin-1')
+    # fpdf2 output(dest='S') returns bytearray, so no need to encode.
+    # We convert to bytes just to be safe.
+    return bytes(pdf.output(dest='S'))
+
+def generate_pdf_reportlab(code):
+    """Generates a PDF using ReportLab with line numbers and Courier font."""
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    
+    c.setFont("Courier", 10)
+    line_height = 12
+    margin_left = 40
+    margin_top = height - 40
+    y = margin_top
+    
+    lines = code.split('\n')
+    
+    for i, line in enumerate(lines, 1):
+        if y < 40:
+            c.showPage()
+            c.setFont("Courier", 10)
+            y = margin_top
+            
+        line_content = f"{i:>4}: {line}"
+        c.drawString(margin_left, y, line_content)
+        y -= line_height
+        
+    c.save()
+    buffer.seek(0)
+    return buffer.getvalue()
 
 # --- Sidebar (The Debugger) ---
 with st.sidebar:
+    st.header("⚙️ Settings")
+    pdf_engine = st.radio("PDF Engine", ["FPDF2", "ReportLab"], index=0)
+    
+    st.divider()
+
     st.header("🛠️ Debugger & Fixer")
     
     # Use columns to keep buttons side-by-side and always visible at the top
@@ -156,7 +200,11 @@ with col1:
 with col2:
     if code:
         try:
-            pdf_bytes = generate_pdf(code)
+            if pdf_engine == "ReportLab":
+                pdf_bytes = generate_pdf_reportlab(code)
+            else:
+                pdf_bytes = generate_pdf(code)
+            
             st.download_button(
                 label="📄 Generate PDF",
                 data=pdf_bytes,
