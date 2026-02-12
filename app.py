@@ -1,181 +1,153 @@
+import streamlit as st
+from fpdf import FPDF
+import autopep8
+import tempfile
 import os
 import subprocess
-import tempfile
-import glob
-from flask import Flask, request, send_file, jsonify, render_template
+import sys
 
-import re
+# --- Page Config ---
+st.set_page_config(
+    page_title="Python Code to PDF & Fixer",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-app = Flask(__name__)
+# --- Session State Initialization ---
+if 'code_input' not in st.session_state:
+    st.session_state.code_input = ""
 
-def clean_code(code, font_size=None):
-    # Remove markdown code fences
-    code = re.sub(r'```python|```', '', code)
-    
-    # Remove citation markers like [cite_start], [cite: 1], etc.
-    code = re.sub(r'\[cite_start\]', '', code)
-    code = re.sub(r'\[cite: \d+\]', '', code)
-    code = re.sub(r'\[cite_end\]', '', code)
-    
-    # Inject Font Size if provided
-    if font_size:
-        # FPDF: set_font_size(12) -> set_font_size(16)
-        # Use \g<1> to prevent \1 + digits from being interpreted as octal or wrong group
-        code = re.sub(r'(\.set_font_size\s*\()\s*\d+', f'\\g<1>{font_size}', code)
-        
-        # FPDF: set_font(..., size=12) -> set_font(..., size=16) (Keyword arg)
-        code = re.sub(r'(\.set_font\s*\([^)]*?size\s*=\s*)\d+', f'\\g<1>{font_size}', code)
-        
-        # FPDF: set_font("Arial", 12) or set_font("Arial", "B", 12) (Positional)
-        # Safer approach for positional: Look for patterns ending in a number inside set_font
-        # Matches: .set_font("Arial", 12)
-        code = re.sub(r'(\.set_font\s*\((?:[^()=]+,)\s*)\d+(\s*\))', f'\\g<1>{font_size}\\g<2>', code)
-        
-        # ReportLab: setFont("Name", 12) -> setFont("Name", 16)
-        code = re.sub(r'(\.setFont\s*\([^,]+,\s*)\d+', f'\\g<1>{font_size}', code)
-    
-    return code.strip()
+# --- Helper Functions ---
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+def run_linter(code):
+    """Runs flake8 on the provided code and returns a list of errors/warnings."""
+    if not code.strip():
+        return ["No code to check."]
 
-@app.route('/convert', methods=['POST'])
-def convert():
-    data = request.json
-    raw_code = data.get('code')
-    font_size = data.get('font_size')
-    
-    if not raw_code:
-        return jsonify({'error': 'No code provided'}), 400
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as tmp:
+        tmp.write(code)
+        tmp_path = tmp.name
 
-    code = clean_code(raw_code, font_size)
-    
-    # Create a temporary directory for execution
-    with tempfile.TemporaryDirectory() as temp_dir:
-        script_path = os.path.join(temp_dir, 'script.py')
-        
-        # Write the user code to a file
-        with open(script_path, 'w', encoding='utf-8') as f:
-            # Inject Monkey Patch
-            patch_code = """
-import fpdf
-from fpdf import FPDF
-# --- MONKEY PATCH START ---
-if not hasattr(FPDF, '_original_multi_cell'):
-    FPDF._original_multi_cell = FPDF.multi_cell
-
-def patched_multi_cell(self, *args, **kwargs):
     try:
-        w = kwargs.get('w')
-        if w is None and len(args) > 0:
-            w = args[0]
+        # Run flake8
+        result = subprocess.run(
+            [sys.executable, "-m", "flake8", tmp_path],
+            capture_output=True,
+            text=True
+        )
+        output = result.stdout
         
-        if w == 0:
-            available_width = self.w - self.r_margin - self.x
-            if available_width < 5:
-                self.ln()
-                available_width = self.w - self.r_margin - self.x
-            
-            if kwargs.get('w') is not None:
-                kwargs['w'] = available_width
-            elif len(args) > 0:
-                args = (available_width,) + args[1:]
-    except:
-        pass
-    
-    try:
-        return self._original_multi_cell(*args, **kwargs)
+        # Clean up filename from output to make it cleaner
+        cleaned_output = []
+        for line in output.splitlines():
+            # flake8 output format: file:line:col: code message
+            # We want to remove the file path
+            parts = line.split(':', 3)
+            if len(parts) >= 4:
+                line_num = parts[1]
+                col_num = parts[2]
+                message = parts[3]
+                cleaned_output.append(f"Line {line_num}, Col {col_num}: {message.strip()}")
+            else:
+                cleaned_output.append(line)
+        
+        return cleaned_output if cleaned_output else ["No errors found! Great job."]
+
     except Exception as e:
-        err_msg = str(e).lower()
-        if "outside the range" in err_msg or "codec can't encode" in err_msg or "character map" in err_msg:
-             try:
-                text = kwargs.get('text') or kwargs.get('txt')
-                text_arg_index = -1
-                
-                if text is None:
-                    if len(args) >= 3:
-                        text = args[2]
-                        text_arg_index = 2
-                
-                if text:
-                    normalized = text.encode('latin-1', 'replace').decode('latin-1')
-                    if kwargs.get('text') is not None:
-                        kwargs['text'] = normalized
-                    elif kwargs.get('txt') is not None:
-                        kwargs['txt'] = normalized
-                    elif text_arg_index != -1:
-                        args_list = list(args)
-                        args_list[text_arg_index] = normalized
-                        args = tuple(args_list)
-                    return self._original_multi_cell(*args, **kwargs)
-             except:
-                pass
-        raise e
+        return [f"Error running linter: {str(e)}"]
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
-FPDF.multi_cell = patched_multi_cell
-
-# --- UNICODE PATCH START ---
-if not hasattr(FPDF, '_original_normalize_text'):
-    FPDF._original_normalize_text = FPDF.normalize_text
-
-def patched_normalize_text(self, text):
+def auto_fix_code(code):
+    """Uses autopep8 to fix the code."""
     try:
-        return self._original_normalize_text(text)
-    except:
-        return text.encode('latin-1', 'replace').decode('latin-1')
+        # aggressive=1 is usually safe for formatting
+        fixed_code = autopep8.fix_code(code, options={'aggressive': 1})
+        return fixed_code
+    except Exception as e:
+        st.error(f"Auto-fix failed: {e}")
+        return code
 
-FPDF.normalize_text = patched_normalize_text
-# --- UNICODE PATCH END ---
+class CodePDF(FPDF):
+    def header(self):
+        self.set_font('Courier', 'B', 12)
+        self.cell(0, 10, 'Python Code Document', 0, 1, 'C')
+        self.ln(5)
 
-# --- MONKEY PATCH END ---
-"""
-            f.write(patch_code + "\n" + code)
-            
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Courier', 'I', 8)
+        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+
+def generate_pdf(code):
+    """Generates a PDF with line numbers and Courier font."""
+    pdf = CodePDF()
+    pdf.add_page()
+    pdf.set_font("Courier", size=10)
+    
+    lines = code.split('\n')
+    line_height = 5
+    
+    for i, line in enumerate(lines, 1):
+        # Format: "  1: import os"
+        line_content = f"{i:>4}: {line}"
+        # safe_line = line_content.encode('latin-1', 'replace').decode('latin-1') # Basic sanitization
+        pdf.multi_cell(0, line_height, txt=line_content)
+        
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- Sidebar (The Debugger) ---
+with st.sidebar:
+    st.header("🛠️ Debugger & Fixer")
+    
+    if st.button("Check for Errors"):
+        errors = run_linter(st.session_state.code_input)
+        if errors and errors[0].startswith("No errors"):
+            st.success(errors[0])
+        else:
+            for err in errors:
+                st.error(err)
+
+    if st.button("Apply Fixes"):
+        if st.session_state.code_input:
+            fixed = auto_fix_code(st.session_state.code_input)
+            if fixed != st.session_state.code_input:
+                st.session_state.code_input = fixed
+                st.rerun() # Force reload to show updated code
+            else:
+                st.info("Code is already PEP8 compliant.")
+        else:
+            st.warning("No code to fix.")
+
+# --- Main Area (The Editor) ---
+st.title("🐍 Python Code to PDF Converter")
+
+# Code Editor
+# We use key='code_input' to bind it to session state automatically, 
+# but we also need to manually handle updates if we modify it programmatically.
+code = st.text_area(
+    "Paste your Python code here:",
+    height=400,
+    key="code_input" 
+)
+
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    if st.button("Clear Code"):
+        st.session_state.code_input = ""
+        st.rerun()
+
+with col2:
+    if code:
         try:
-            # Execute the script in the temporary directory
-            # Capture output for debugging
-            result = subprocess.run(
-                ['python', 'script.py'], 
-                cwd=temp_dir, 
-                capture_output=True, 
-                text=True, 
-                timeout=30 # Prevent infinite loops
+            pdf_bytes = generate_pdf(code)
+            st.download_button(
+                label="📄 Generate PDF",
+                data=pdf_bytes,
+                file_name="code_document.pdf",
+                mime="application/pdf"
             )
-            
-            if result.returncode != 0:
-                return jsonify({'error': f"Execution failed:\n{result.stderr}"}), 400
-                
-            # Find the generated PDF file
-            pdf_files = glob.glob(os.path.join(temp_dir, '*.pdf'))
-            
-            if not pdf_files:
-                return jsonify({'error': 'No PDF file was generated by the script. Ensure your code saves a PDF (e.g., output("file.pdf")).'}), 400
-                
-            # Return the first PDF found
-            # We must read it into memory or stream it before the temp dir is cleaned up
-             # However, send_file with a file path inside a closing verify might fail if not handled carefully
-            # A safer way is to read the content and send it as bytes, or keep the temp file open?
-            # Actually, flask's send_file can take a file object.
-            
-            pdf_path = pdf_files[0]
-            # Use a BytesIO object to hold the file in memory
-            from io import BytesIO
-            with open(pdf_path, 'rb') as f:
-                pdf_data = BytesIO(f.read())
-            
-            pdf_filename = os.path.basename(pdf_path)
-            return send_file(
-                pdf_data, 
-                mimetype='application/pdf', 
-                as_attachment=True, 
-                download_name=pdf_filename
-            )
-
-        except subprocess.TimeoutExpired:
-            return jsonify({'error': 'Execution timed out.'}), 408
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+            st.error(f"Error generating PDF: {e}")
