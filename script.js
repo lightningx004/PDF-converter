@@ -57,7 +57,14 @@ def generate_pdf_bytes(code, font_size):
             pdf.multi_cell(0, line_height, text=line_content, new_x="LMARGIN", new_y="NEXT", align='L')
             
         # Output as bytes
-        return pdf.output(dest='S').encode('latin-1')
+        # fpdf2 output(dest='S') returns a bytearray
+        val = pdf.output(dest='S')
+        if isinstance(val, bytearray):
+            return bytes(val)
+        elif isinstance(val, str):
+            return val.encode('latin-1')
+        else:
+            return bytes(val)
     except Exception as e:
         return str(e)
             `);
