@@ -1,308 +1,307 @@
-import streamlit as st
-from fpdf import FPDF
-import autopep8
-import tempfile
 import os
 import subprocess
-import sys
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_LEFT
-import io
-
-# --- Page Config ---
-st.set_page_config(
-    page_title="Python Code to PDF & Fixer",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# --- Session State Initialization ---
-if 'code_input' not in st.session_state:
-    st.session_state.code_input = ""
-
-# --- Helper Functions ---
-
-def run_linter(code):
-    """Runs flake8 on the provided code and returns a list of errors/warnings."""
-    if not code.strip():
-        return ["No code to check."]
-
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as tmp:
-        tmp.write(code)
-        tmp_path = tmp.name
-
-    try:
-        # Run flake8
-        result = subprocess.run(
-            [sys.executable, "-m", "flake8", tmp_path],
-            capture_output=True,
-            text=True
-        )
-        output = result.stdout
-        
-        # Clean up filename from output to make it cleaner
-        cleaned_output = []
-        for line in output.splitlines():
-            # flake8 output format: file:line:col: code message
-            # We want to remove the file path
-            parts = line.split(':', 3)
-            if len(parts) >= 4:
-                line_num = parts[1]
-                col_num = parts[2]
-                message = parts[3]
-                cleaned_output.append(f"Line {line_num}, Col {col_num}: {message.strip()}")
-            else:
-                cleaned_output.append(line)
-        
-        return cleaned_output if cleaned_output else ["No errors found! Great job."]
-
-    except Exception as e:
-        return [f"Error running linter: {str(e)}"]
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-def auto_fix_code(code):
-    """Uses autopep8 to fix the code."""
-    try:
-        # aggressive=1 is usually safe for formatting
-        fixed_code = autopep8.fix_code(code, options={'aggressive': 1})
-        return fixed_code
-    except Exception as e:
-        st.error(f"Auto-fix failed: {e}")
-        return code
-
-class CodePDF(FPDF):
-    def header(self):
-        self.set_font('Courier', 'B', 12)
-        self.cell(0, 10, 'Python Code Document', 0, 1, 'C')
-        self.ln(5)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Courier', 'I', 8)
-        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-
-def generate_pdf(code):
-    """Generates a PDF with line numbers and Courier font."""
-    pdf = CodePDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Courier", size=10)
-    
-    lines = code.split('\n')
-    line_height = 5
-    
-    for i, line in enumerate(lines, 1):
-        # Format: "  1: import os"
-        line_content = f"{i:>4}: {line}"
-        # Use text= instead of txt= (fpdf2)
-        try:
-            # Explicitly set new_x and new_y to ensure carriage return to left margin
-            pdf.multi_cell(0, line_height, text=line_content, new_x="LMARGIN", new_y="NEXT")
-        except Exception as e:
-            st.error(f"Error generating PDF at line {i}: {e}")
-            raise e
-        
-    # fpdf2 output(dest='S') returns bytearray, so no need to encode.
-    # We convert to bytes just to be safe.
-    return bytes(pdf.output(dest='S'))
-
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_LEFT
-import io
-import shutil
-import glob
 import tempfile
-import uuid
+import glob
+from flask import Flask, request, send_file, jsonify, render_template
 
-# ... (other imports)
+import re
 
-def generate_pdf_reportlab(code):
-    """Generates a PDF using ReportLab with line numbers and Courier font via Platypus for wrapping."""
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter,
-                            rightMargin=40, leftMargin=40,
-                            topMargin=40, bottomMargin=40)
+app = Flask(__name__)
+
+def clean_code(code, font_size=None):
+    # Remove markdown code fences
+    code = re.sub(r'```python|```', '', code)
     
-    styles = getSampleStyleSheet()
-    # Create a custom style for code
-    code_style = ParagraphStyle(
-        name='CodeStyle',
-        parent=styles['Normal'],
-        fontName='Courier',
-        fontSize=10,
-        leading=12,  # Line spacing
-        alignment=TA_LEFT,
-        wordWrap='CJK', # Allow breaking lines within words if needed, though 'LTR' is default
-    )
-
-    story = []
-    lines = code.split('\n')
+    # Remove citation markers like [cite_start], [cite: 1], etc.
+    code = re.sub(r'\[cite_start\]', '', code)
+    code = re.sub(r'\[cite: \d+\]', '', code)
+    code = re.sub(r'\[cite_end\]', '', code)
     
-    for i, line in enumerate(lines, 1):
-        # Escape HTML characters for Paragraph: <, >, &
-        safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        # Repace spaces with non-breaking spaces to preserve indentation?
-        # Paragraph collapses multiple spaces. We want to preserve them for code indentation.
-        # Replacing space with &nbsp;
-        safe_line = safe_line.replace(' ', '&nbsp;')
+    # Inject Font Size if provided
+    if font_size:
+        # FPDF: set_font_size(12) -> set_font_size(16)
+        # Use \g<1> to prevent \1 + digits from being interpreted as octal or wrong group
+        code = re.sub(r'(\.set_font_size\s*\()\s*\d+', f'\\g<1>{font_size}', code)
         
-        line_content = f"{i:>4}:&nbsp;{safe_line}"
-        p = Paragraph(line_content, code_style)
-        story.append(p)
-        # story.append(Spacer(1, 1)) # Optional small spacer, but leading handles line height
+        # FPDF: set_font(..., size=12) -> set_font(..., size=16) (Keyword arg)
+        code = re.sub(r'(\.set_font\s*\([^)]*?size\s*=\s*)\d+', f'\\g<1>{font_size}', code)
         
-    doc.build(story)
-    buffer.seek(0)
-    return buffer.getvalue()
+        # FPDF: set_font("Arial", 12) or set_font("Arial", "B", 12) (Positional)
+        # Safer approach for positional: Look for patterns ending in a number inside set_font
+        # Matches: .set_font("Arial", 12)
+        code = re.sub(r'(\.set_font\s*\((?:[^()=]+,)\s*)\d+(\s*\))', f'\\g<1>{font_size}\\g<2>', code)
+        
+        # ReportLab: setFont("Name", 12) -> setFont("Name", 16)
+        code = re.sub(r'(\.setFont\s*\([^,]+,\s*)\d+', f'\\g<1>{font_size}', code)
+    
+    return code.strip()
 
-def execute_code(code):
-    """Executes the provided code in a temporary directory and returns the first PDF generated."""
-    # Create a temporary directory
-    temp_dir = tempfile.mkdtemp()
-    original_cwd = os.getcwd()
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/convert', methods=['POST'])
+def convert():
+    data = request.json
+    raw_code = data.get('code')
+    font_size = data.get('font_size')
+    
+    if not raw_code:
+        return jsonify({'error': 'No code provided'}), 400
+
+    code = clean_code(raw_code, font_size)
+    
+    # Create a temporary directory for execution
+    with tempfile.TemporaryDirectory() as temp_dir:
+        script_path = os.path.join(temp_dir, 'script.py')
+        
+        # Write the user code to a file
+        with open(script_path, 'w', encoding='utf-8') as f:
+            # Inject Monkey Patch
+            patch_code = """
+import fpdf
+from fpdf import FPDF
+# --- MONKEY PATCH START ---
+if not hasattr(FPDF, '_original_multi_cell'):
+    FPDF._original_multi_cell = FPDF.multi_cell
+
+def patched_multi_cell(self, *args, **kwargs):
+    try:
+        w = kwargs.get('w')
+        if w is None and len(args) > 0:
+            w = args[0]
+        
+        if w == 0:
+            available_width = self.w - self.r_margin - self.x
+            if available_width < 5:
+                self.ln()
+                available_width = self.w - self.r_margin - self.x
+            
+            if kwargs.get('w') is not None:
+                kwargs['w'] = available_width
+            elif len(args) > 0:
+                args = (available_width,) + args[1:]
+    except:
+        pass
     
     try:
-        # Change to the temporary directory so files are created there
-        os.chdir(temp_dir)
-        
-        # Execute the code
-        # We use a new dictionary for globals to avoid polluting the app's namespace
-        # But we need to make sure they can import standard libraries.
-        exec_globals = {'__name__': '__main__'}
-        exec(code, exec_globals)
-        
-        # Look for PDF files
-        pdf_files = glob.glob("*.pdf")
-        
-        if pdf_files:
-            # Found a PDF! Return the content of the first one.
-            pdf_filename = pdf_files[0]
-            with open(pdf_filename, "rb") as f:
-                pdf_bytes = f.read()
-            return pdf_bytes, pdf_filename, None
-        else:
-            return None, None, "No PDF file was generated by the code."
-            
+        return self._original_multi_cell(*args, **kwargs)
     except Exception as e:
-        return None, None, f"Error executing code: {str(e)}"
-        
-    finally:
-        # Always clean up
-        os.chdir(original_cwd)
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-
-# --- Sidebar (The Debugger) ---
-with st.sidebar:
-    st.header("⚙️ Settings")
-    pdf_engine = st.radio("PDF Engine", ["FPDF2", "ReportLab"], index=0)
-    
-    st.divider()
-
-    st.header("🛠️ Debugger & Fixer")
-    
-    # Use columns to keep buttons side-by-side and always visible at the top
-    col_debug_1, col_debug_2 = st.columns(2)
-    
-    with col_debug_1:
-        check_btn = st.button("Check Errors")
-        
-    with col_debug_2:
-        fix_btn = st.button("Apply Fixes")
-
-    # Container for error messages so they appear below the buttons
-    results_container = st.container()
-
-    if check_btn:
-        errors = run_linter(st.session_state.code_input)
-        with results_container:
-            if errors and errors[0].startswith("No errors"):
-                st.success(errors[0])
-            else:
-                st.warning(f"Found {len(errors)} issues:")
-                for err in errors:
-                    st.error(err)
-
-    if fix_btn:
-        if st.session_state.code_input:
-            fixed = auto_fix_code(st.session_state.code_input)
-            if fixed != st.session_state.code_input:
-                st.session_state.code_input = fixed
-                st.rerun()
-            else:
-                results_container.info("Code is already PEP8 compliant.")
-        else:
-            results_container.warning("No code to fix.")
-
-# --- Main Area (The Editor) ---
-st.title("🐍 Python Code to PDF Converter")
-
-# Code Editor
-# We use key='code_input' to bind it to session state automatically, 
-# but we also need to manually handle updates if we modify it programmatically.
-code = st.text_area(
-    "Paste your Python code here:",
-    height=400,
-    key="code_input" 
-)
-
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    if st.button("Clear Code"):
-        st.session_state.code_input = ""
-        st.rerun()
-
-with col2:
-    if code:
-        # Determine if the code likely generates a PDF to highlight the right action
-        looks_like_generator = "fpdf" in code or "reportlab" in code or ".output(" in code or ".save()" in code
-        
-        st.write("### Choose Action")
-        action_col1, action_col2 = st.columns(2)
-        
-        with action_col1:
-            st.info("Convert this source code text into a PDF document.")
-            try:
-                if pdf_engine == "ReportLab":
-                    pdf_bytes = generate_pdf_reportlab(code)
-                else:
-                    pdf_bytes = generate_pdf(code)
+        err_msg = str(e).lower()
+        if "outside the range" in err_msg or "codec can't encode" in err_msg or "character map" in err_msg:
+             try:
+                text = kwargs.get('text') or kwargs.get('txt')
+                text_arg_index = -1
                 
-                st.download_button(
-                    label="📄 Download Source Code PDF",
-                    data=pdf_bytes,
-                    file_name="source_code.pdf",
-                    mime="application/pdf",
-                    key="download_source",
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"Error generating PDF: {e}")
+                if text is None:
+                    if len(args) >= 3:
+                        text = args[2]
+                        text_arg_index = 2
+                
+                if text:
+                    normalized = text.encode('latin-1', 'replace').decode('latin-1')
+                    if kwargs.get('text') is not None:
+                        kwargs['text'] = normalized
+                    elif kwargs.get('txt') is not None:
+                        kwargs['txt'] = normalized
+                    elif text_arg_index != -1:
+                        args_list = list(args)
+                        args_list[text_arg_index] = normalized
+                        args = tuple(args_list)
+                    return self._original_multi_cell(*args, **kwargs)
+             except:
+                pass
+        raise e
 
-        with action_col2:
-            st.info("Execute this script and download the PDF it generates.")
-            run_btn = st.button("🚀 Run Script & Generate PDF", type="primary" if looks_like_generator else "secondary", use_container_width=True)
+FPDF.multi_cell = patched_multi_cell
+
+# --- UNICODE PATCH START ---
+if not hasattr(FPDF, '_original_normalize_text'):
+    FPDF._original_normalize_text = FPDF.normalize_text
+
+def patched_normalize_text(self, text):
+    try:
+        return self._original_normalize_text(text)
+    except:
+        return text.encode('latin-1', 'replace').decode('latin-1')
+
+FPDF.normalize_text = patched_normalize_text
+# --- UNICODE PATCH END ---
+
+# --- MONKEY PATCH END ---
+# --- END MONKEY PATCH ---
+"""
+
+            auto_runner_code = """
+# --- AUTO-RUNNER LOGIC START ---
+import glob
+import inspect
+import sys
+import os
+
+pdf_files = glob.glob("*.pdf")
+if not pdf_files:
+    # Check if we printed anything (stdout is captured by runner, but we can check if sys.stdout has been written to?)
+    # Actually, we can just try to run functions if no PDF exists.
+    # Printing side-effects are fine.
+    
+    current_globals = dict(globals())
+    candidates = []
+    
+    for name, obj in current_globals.items():
+        if callable(obj) and name not in ['clean_code', 'patched_multi_cell', 'patched_normalize_text', 'FPDF', 'fpdf', 'glob', 'inspect', 'sys', 'os', 're', 'subprocess', 'tempfile']:
+             # Check if it was defined in the script (__main__)
+             if getattr(obj, '__module__', None) in (None, '__main__'):
+                 candidates.append(name)
+    
+    for name in candidates:
+        try:
+            func = current_globals[name]
+            sig = inspect.signature(func)
+            params = len(sig.parameters)
             
-            if run_btn:
-                with st.spinner("Running code..."):
-                    pdf_out, pdf_name, err = execute_code(code)
-                    if pdf_out:
-                        st.success(f"Success! Generated: {pdf_name}")
-                        st.download_button(
-                            label=f"⬇️ Download {pdf_name}",
-                            data=pdf_out,
-                            file_name=pdf_name,
-                            mime="application/pdf",
-                            key="download_exec",
-                            use_container_width=True
-                        )
-                    else:
-                        st.error(err)
+            if params == 0:
+                print(f"Auto-running {name}()...")
+                func()
+            elif params == 1:
+                print(f"Auto-running {name}('output.pdf')...")
+                func("output.pdf")
+            
+            if glob.glob("*.pdf"):
+                break
+        except:
+            pass
+# --- AUTO-RUNNER LOGIC END ---
+"""
+            
+            # Write key parts in order:
+            # 1. Monkey Patch (setup FPDF)
+            # 2. User Code (defines functions, maybe runs them)
+            # 3. Auto-Runner (if user code didn't produce PDF)
+            
+            full_script = patch_code + "\n" + code + "\n" + auto_runner_code
+            f.write(full_script)
+            
+        try:
+            # Execute the script in the temporary directory
+            # Capture output for debugging
+            result = subprocess.run(
+                ['python', 'script.py'], 
+                cwd=temp_dir, 
+                capture_output=True, 
+                text=True, 
+                timeout=30 # Prevent infinite loops
+            )
+            
+            # Find the generated PDF file
+            pdf_files = glob.glob(os.path.join(temp_dir, '*.pdf'))
+            
+            if not pdf_files:
+                # No PDF file found. Check stdout.
+                stdout_content = result.stdout
+                if stdout_content and stdout_content.strip():
+                     # Generate PDF from stdout
+                     try:
+                        from fpdf import FPDF # FPDF is already imported in the patch_code, but this is fine.
+                        pdf = FPDF()
+                        pdf.add_page()
+                        pdf.set_font("Courier", size=12)
+                        pdf.multi_cell(0, 5, txt=stdout_content)
+                        stdout_pdf_path = os.path.join(temp_dir, "output_from_stdout.pdf")
+                        pdf.output(stdout_pdf_path)
+                        pdf_files = [stdout_pdf_path]
+                     except Exception as e:
+                        # If PDF generation from stdout fails, raise an error
+                        return jsonify({'error': f"Script executed, but no PDF was generated and failed to create PDF from stdout: {e}"}), 400
+                else:
+                    # HEURISTIC: Comprehensive Auto-Fix (Retry Mechanism)
+                    if result.returncode != 0 and "SyntaxError" in result.stderr:
+                         print("App.py: SyntaxError detected. Applying Auto-Fix...")
+                         
+                         # Define the fix logic inline (or call a helper if we had one)
+                         # We'll just apply the regexes here directly to `code`
+                         fixed_code = code
+                         
+                         # 1. Triple Quotes
+                         fixed_code = re.sub(r'([^\"])\"\"(\s*[),])', r'\1"""\2', fixed_code)
+                         
+                         # 2. Incomplete Assignments
+                         fixed_code = re.sub(r'(\s*[\w_][\w\d_]*\s*=\s*)(?=,)', r'\1[]', fixed_code)
+                         
+                         # 3. Incomplete Dict Values
+                         fixed_code = re.sub(r'(:\s*)(?=,)', r'\1[]', fixed_code)
+                         fixed_code = re.sub(r'(:\s*)(?=\})', r'\1[] ', fixed_code)
+                         
+                         # 4. Top-level Incomplete Assignment
+                         fixed_code = re.sub(r'^(\s*[\w_][\w\d_]*\s*=\s*)(?=$|#|\n)', r'\1[] # Auto-filled', fixed_code, flags=re.MULTILINE)
+                         
+                         # 5. Newline in String (Smart Fix)
+                         lines = fixed_code.split('\n')
+                         fixed_lines = []
+                         for line in lines:
+                             # Ignore comments
+                             content = line.split('#')[0]
+                             dq_count = content.count('"') - content.count(r'\"')
+                             
+                             if dq_count % 2 == 1:
+                                 # Odd quotes -> Potential unclosed string
+                                 last_quote = line.rfind('"')
+                                 trailing = line[last_quote+1:].strip()
+                                 # If not followed by closing chars, it's likely unclosed -> escape newline
+                                 if not re.match(r'^[\),\]\}\s]*$', trailing):
+                                      line += " \\"
+                             fixed_lines.append(line)
+                         fixed_code = '\n'.join(fixed_lines)
+                         
+                         if fixed_code != code:
+                             print("App.py: Auto-Fix applied. Retrying...")
+                             # Re-write the script
+                             full_script = patch_code + "\n" + fixed_code + "\n" + auto_runner_code
+                             
+                             # We need to write to the file again. subprocess.run doesn't change the file.
+                             # We need to assume 'script.py' is the file in temp_dir
+                             script_path = os.path.join(temp_dir, 'script.py')
+                             with open(script_path, 'w', encoding='utf-8') as f:
+                                 f.write(full_script)
+                             
+                             # Retry execution
+                             result = subprocess.run(
+                                ['python', 'script.py'], 
+                                cwd=temp_dir, 
+                                capture_output=True, 
+                                text=True, 
+                                timeout=30
+                             )
+                             
+                             # Check output again
+                             pdf_files = glob.glob(os.path.join(temp_dir, '*.pdf'))
+                             if pdf_files:
+                                 # Success after retry!
+                                 pass # Fall through to PDF handling
+
+                    if result.returncode != 0:
+                        return jsonify({'error': f"Execution failed:\n{result.stderr}"}), 400
+                    return jsonify({'error': 'No PDF file was generated. Ensure your code saves a PDF or prints output.'}), 400
+            
+            # If we reach here, pdf_files should contain at least one PDF path
+            pdf_path = pdf_files[0]
+            
+            # Read the PDF into memory before the temporary directory is cleaned up
+            with open(pdf_path, 'rb') as f:
+                pdf_data = BytesIO(f.read())
+            
+            pdf_filename = os.path.basename(pdf_path)
+            return send_file(
+                pdf_data, 
+                mimetype='application/pdf', 
+                as_attachment=True, 
+                download_name=pdf_filename
+            )
+
+        except subprocess.TimeoutExpired:
+            return jsonify({'error': 'Execution timed out.'}), 408
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)

@@ -126,17 +126,6 @@ h1 {
     font-weight: 300;
 }
 
-.version-tag {
-    font-size: 0.7rem;
-    color: var(--primary-color);
-    border: 1px solid var(--primary-color);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    display: inline-block;
-    margin-top: 0.2rem;
-    opacity: 0.8;
-}
-
 /* Glassmorphism Panel */
 .glass-panel {
     background: var(--glass-bg);

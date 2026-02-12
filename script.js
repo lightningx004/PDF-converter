@@ -5,8 +5,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const filenameInput = document.getElementById('filename-input');
     const fontSizeInput = document.getElementById('fontsize-input');
     const lineNumbers = document.getElementById('line-numbers');
-
-    // Stats elements
     const statLines = document.getElementById('stat-lines');
     const statChars = document.getElementById('stat-chars');
     const statWords = document.getElementById('stat-words');
@@ -14,89 +12,79 @@ document.addEventListener('DOMContentLoaded', async () => {
     let pyodide = null;
     let pyodideReady = false;
 
-    // --- Initialization ---
+    // Initial Stats
+    updateStats();
+
+    // Load Pyodide
     async function initPyodide() {
+        showToast('Initializing Pyodide...', 'info');
         try {
-            convertBtn.disabled = true;
-            convertBtn.innerHTML = '<span class="btn-loader"></span> Loading Python...';
+            if (typeof loadPyodide === 'undefined') {
+                throw new Error('Pyodide script not loaded. Check your internet connection.');
+            }
 
             pyodide = await loadPyodide();
+
+            showToast('Loading Micropip...', 'info');
             await pyodide.loadPackage("micropip");
             const micropip = pyodide.pyimport("micropip");
+
+            showToast('Installing fpdf2 library...', 'info');
             await micropip.install("fpdf2");
+            showToast('Installing reportlab library...', 'info');
+            await micropip.install("reportlab");
 
-            // Define Python logic
-            pyodide.runPython(`
-from fpdf import FPDF
-import io
+            showToast('Configuring environment...', 'info');
+            // Define clean_code function in Python environment
+            await pyodide.runPythonAsync(`
+import re
 
-class CodePDF(FPDF):
-    def header(self):
-        self.set_font('Courier', 'B', 12)
-        self.cell(0, 10, 'Python Code Document', 0, 1, 'C')
-        self.ln(5)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Courier', 'I', 8)
-        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-
-def generate_pdf_bytes(code, font_size):
-    try:
-        pdf = CodePDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
-        pdf.set_font("Courier", size=int(font_size))
+def clean_code(code, font_size=None):
+    # Remove markdown code fences
+    code = re.sub(r'\`\`\`python|\`\`\`', '', code)
+    
+    # Remove citation markers
+    code = re.sub(r'\\[cite_start\\]', '', code)
+    code = re.sub(r'\\[cite: \\d+\\]', '', code)
+    code = re.sub(r'\\[cite_end\\]', '', code)
+    
+    # Inject Font Size if provided
+    if font_size:
+        # FPDF: set_font_size(12) -> set_font_size(16)
+        code = re.sub(r'(\\.set_font_size\\s*\\()\\s*\\d+', f'\\\\g<1>{font_size}', code)
         
-        lines = code.split('\\n')
-        line_height = 5
+        # FPDF: set_font(..., size=12) -> set_font(..., size=16) (Keyword arg)
+        code = re.sub(r'(\\.set_font\\s*\\([^)]*?size\\s*=\\s*)\\d+', f'\\\\g<1>{font_size}', code)
         
-        for i, line in enumerate(lines, 1):
-            line_content = f"{i:>4}: {line}"
-            # fpdf2 compatible call
-            pdf.multi_cell(0, line_height, text=line_content, new_x="LMARGIN", new_y="NEXT", align='L')
-            
-        # Output as bytes
-        # fpdf2 output(dest='S') returns a bytearray
-        val = pdf.output(dest='S')
-        if isinstance(val, bytearray):
-            return bytes(val)
-        elif isinstance(val, str):
-            return val.encode('latin-1')
-        else:
-            return bytes(val)
-    except Exception as e:
-        return str(e)
+        # FPDF: set_font("Arial", 12) (Positional)
+        code = re.sub(r'(\\.set_font\\s*\\((?:[^()=]+,)\\s*)\\d+(\\s*\\))', f'\\\\g<1>{font_size}\\\\g<2>', code)
+        
+        # ReportLab: setFont("Name", 12) -> setFont("Name", 16)
+        code = re.sub(r'(\\.setFont\\s*\\([^,]+,\\s*)\\d+', f'\\\\g<1>{font_size}', code)
+    
+    return code.strip()
             `);
 
             pyodideReady = true;
-            convertBtn.disabled = false;
-            convertBtn.innerHTML = '<i class="fa-solid fa-download"></i> <span class="btn-text">Convert to PDF</span> <span class="btn-loader"></span>';
-            showToast('Ready for offline use!', 'success');
+            showToast('Python ready!', 'success');
         } catch (err) {
-            console.error("Pyodide failed to load", err);
+            console.error(err);
             showToast('Failed to load Python environment', 'error');
-            convertBtn.innerHTML = '<i class="fa-solid fa-exclamation-triangle"></i> Error Loading';
         }
     }
 
-    // Start loading immediately
     initPyodide();
 
-    // --- 1. Editor UI Logic ---
-
-    // Update line numbers and stats on input
+    // Editor Interactions
     codeInput.addEventListener('input', () => {
         updateStats();
         updateLineNumbers();
     });
 
-    // Sync scroll
     codeInput.addEventListener('scroll', () => {
         lineNumbers.scrollTop = codeInput.scrollTop;
     });
 
-    // Handle Tab key
     codeInput.addEventListener('keydown', (e) => {
         if (e.key === 'Tab') {
             e.preventDefault();
@@ -116,214 +104,328 @@ def generate_pdf_bytes(code, font_size):
         showToast('Editor cleared', 'info');
     });
 
-    // --- 2. Conversion Logic (Client Side) ---
-
+    // Convert Button
     convertBtn.addEventListener('click', async () => {
         if (!pyodideReady) {
-            showToast('Python is still loading, please wait...', 'info');
+            showToast('Python is still loading...', 'info');
             return;
         }
 
-        const codeInput = document.getElementById('code-input');
-        const fontSizeInput = document.getElementById('fontsize-input');
-        const filenameInput = document.getElementById('filename-input');
-
-        // Use 'let' so we can modify it
-        let code = codeInput.value;
+        const code = codeInput.value;
         const fontSize = fontSizeInput.value;
-        const filename = filenameInput.value || 'python_code';
-
         if (!code.trim()) {
             showToast('Please enter some Python code', 'error');
             return;
         }
 
         startLoading();
-        showToast('Generating PDF...', 'info');
 
         try {
-            // Pre-process Code: Sanitize Unicode
-            // Smart single quotes
-            code = code.replace(/\u2018/g, "'").replace(/\u2019/g, "'");
-            // Smart double quotes
-            code = code.replace(/\u201c/g, '"').replace(/\u201d/g, '"');
-            // Dashes
-            code = code.replace(/\u2013/g, '-').replace(/\u2014/g, '-');
-            // Ellipsis
-            code = code.replace(/\u2026/g, '...');
-
-            // Pass data to Python
-            // We use a Python script to handle execution and PDF generation robustly
-            const pythonScript = `
-import sys
-import io
-import re
-
-# Capture stdout
-sys.stdout = io.StringIO()
-
-code_to_run = """${code.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"""
-font_size_val = ${parseInt(fontSize)}
-
-def run_code_safely(user_code, font_size):
+            // cleanup previous pdfs
+            await pyodide.runPythonAsync(`
+import os
+import glob
+for f in glob.glob("*.pdf"):
     try:
-        # Define sanitize_indentation
-        def sanitize_indentation(c):
-            lines = c.split('\\n')
-            fixed_lines = []
-            for line in lines:
-                stripped = line.lstrip()
-                if not stripped:
-                    fixed_lines.append(line)
-                    continue
-                indent_len = len(line) - len(stripped)
-                new_indent_len = 4 * round(indent_len / 4)
-                fixed_lines.append((' ' * new_indent_len) + stripped)
-            return '\\n'.join(fixed_lines)
+        os.remove(f)
+    except:
+        pass
+            `);
 
-        # Define fix_syntax
-        def fix_syntax(code):
-             # Basic Syntax Fixes
-             # 1. Triple Quotes
-             fixed = re.sub(r'"""', "'''", code)
-             # 2. Missing colons
-             fixed = re.sub(r'(def |class |if |else|elif |for |while |try|except|finally|with )([^:]+)(\\s*\\n)', r'\\1\\2:\\3', fixed)
-             return fixed
+            // Set variables for Python
+            pyodide.globals.set("user_code", code);
+            pyodide.globals.set("font_size", fontSize);
 
-        def fix_truncated_structures(code):
-            fixed = code
-            # 1. Handle "key:\n}" -> "key: [],\n}"
-            fixed = re.sub(r'(:\\s*\\n\\s*)(?=[}\\]])', r': [],\\n', fixed)
-            # 2. Handle "var =\n}" -> "var = []\n}"
-            fixed = re.sub(r'(= \\s*\\n\\s*)(?=[}\\]])', r'= []\\n', fixed)
-            
-            # 3. Specific fix for "QUESTIONS_DATA =" (Broadened)
-            # If we see "QUESTIONS_DATA =" followed by newline, assume it starts a list of dicts: "[{"
-            fixed = re.sub(r'(QUESTIONS_DATA\\s*=\\s*\\n)', r'\\1[{\\n', fixed)
-            
-            # 4. Old specific fix (kept as backup for other vars)
-            fixed = re.sub(r'(\\w+\\s*=\\s*\\n\\s*)(?=\\},)', r'\\g<1>[{ # Auto-recovered start\\n', fixed)
-            
-            # 5. Generic fix
-            fixed = re.sub(r'(\\w+\\s*=\\s*\\n\\s*)(?=[\\}\\]],?)', r'\\g<1>[] # Auto-filled\\n', fixed)
-            # 6. EOF Fixes
-            fixed = re.sub(r'(:\\s*)$', r': []', fixed)
-            fixed = re.sub(r'(= \\s*)$', r'= []', fixed)
-            return fixed
-            
-        # Execution Phase
-        cleaned = user_code
-        cleaned = cleaned.replace('\\t', '    ')
-        cleaned = sanitize_indentation(cleaned)
+            // Execute Conversion
+            await pyodide.runPythonAsync(`
+import glob
+import sys
+from fpdf import FPDF
+import fpdf
+
+# --- MONKEY PATCH START ---
+# Save original method
+if not hasattr(FPDF, '_original_multi_cell'):
+    FPDF._original_multi_cell = FPDF.multi_cell
+
+def patched_multi_cell(self, *args, **kwargs):
+    try:
+        # Handle width (first arg or 'w' in kwargs)
+        w = kwargs.get('w')
+        if w is None and len(args) > 0:
+            w = args[0]
         
-        # Try running directly
+        # Logic for w=0 fix
+        if w == 0:
+            available_width = self.w - self.r_margin - self.x
+            if available_width < 5:
+                self.ln()
+                available_width = self.w - self.r_margin - self.x
+            
+            # Inject collected available_width back
+            if kwargs.get('w') is not None:
+                kwargs['w'] = available_width
+            elif len(args) > 0:
+                args = (available_width,) + args[1:]
+    except:
+        pass
+    
+    try:
+        return self._original_multi_cell(*args, **kwargs)
+    except Exception as e:
+        # Check if it looks like an encoding/font error (UnicodeEncodeError or FPDFUnicodeEncodingException)
+        err_msg = str(e).lower()
+        if "outside the range" in err_msg or "codec can't encode" in err_msg or "character map" in err_msg:
+             try:
+                text = kwargs.get('text') or kwargs.get('txt')
+                text_arg_index = -1
+                
+                if text is None:
+                    if len(args) >= 3:
+                        text = args[2]
+                        text_arg_index = 2
+                
+                if text:
+                    # Normalize
+                    normalized = text.encode('latin-1', 'replace').decode('latin-1')
+                    
+                    if kwargs.get('text') is not None:
+                        kwargs['text'] = normalized
+                    elif kwargs.get('txt') is not None:
+                        kwargs['txt'] = normalized
+                    elif text_arg_index != -1:
+                        args_list = list(args)
+                        args_list[text_arg_index] = normalized
+                        args = tuple(args_list)
+                        
+                    return self._original_multi_cell(*args, **kwargs)
+             except:
+                pass
+        raise e
+
+FPDF.multi_cell = patched_multi_cell
+
+# --- UNICODE PATCH START ---
+if not hasattr(FPDF, '_original_normalize_text'):
+    FPDF._original_normalize_text = FPDF.normalize_text
+
+def patched_normalize_text(self, text):
+    try:
+        return self._original_normalize_text(text)
+    except:
+        # Fallback for characters not supported by the font (e.g. Emoji)
+        return text.encode('latin-1', 'replace').decode('latin-1')
+
+FPDF.normalize_text = patched_normalize_text
+# --- UNICODE PATCH END ---
+
+# --- MONKEY PATCH END ---
+
+cleaned = clean_code(user_code, font_size)
+
+try:
+    # Execute Conversion
+    import sys
+    from io import StringIO
+    
+    # Capture stdout
+    old_stdout = sys.stdout
+    redirected_output = sys.stdout = StringIO()
+
+    try:
+        # Attempt to execute valid Python code
         try:
             exec(cleaned, globals())
-        except (SyntaxError, IndentationError):
-            print("Syntax/Indentation Error. Attempting Auto-Fix...")
+        except SyntaxError:
+            # HEURISTIC: Comprehensive Auto-Fix
+            def fix_syntax(code):
+                import re
+                fixed = code
+                
+                # 1. Triple Quotes: "text"", -> "text""",
+                fixed = re.sub(r'([^\"])\"\"(\s*[),])', r'\\1"""\\2', fixed)
+                
+                # 2. Incomplete Assignments: x =, -> x = [],
+                fixed = re.sub(r'(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=,)', r'\\1[]', fixed)
+                
+                # 3. Incomplete Dict Values: key:, -> key: [],
+                fixed = re.sub(r'(:\\s*)(?=,)', r'\\1[]', fixed)
+                fixed = re.sub(r'(:\\s*)(?=\\})', r'\\1[] ', fixed)
+                
+                # 4. Top-level Incomplete Assignment: x = \n -> x = []
+                fixed = re.sub(r'^(\\s*[\\w_][\\w\\d_]*\\s*=\\s*)(?=$|#|\\n)', r'\\1[] # Auto-filled', fixed, flags=re.MULTILINE)
+                
+                # 5. Newline in String (Smart Fix)
+                lines = fixed.split('\n')
+                fixed_lines = []
+                for line in lines:
+                    # Ignore comments for quote counting
+                    content = line.split('#')[0]
+                    dq_count = content.count('"') - content.count(r'\"')
+                    
+                    if dq_count % 2 == 1:
+                        # Odd quotes -> Potential unclosed string
+                        last_quote = line.rfind('"')
+                        trailing = line[last_quote+1:].strip()
+                        # If not followed by closing chars, it's likely unclosed -> escape newline
+                        if not re.match(r'^[\),\]\}\s]*$', trailing):
+                             line += " \\"
+                    fixed_lines.append(line)
+                
+                return '\n'.join(fixed_lines)
+
+            print("SyntaxError detected. Attempting Auto-Fix...")
             fixed = fix_syntax(cleaned)
-            fixed = fix_truncated_structures(fixed)
-            try:
-                import autopep8
-                fixed = autopep8.fix_code(fixed, options={'aggressive': 2, 'ignore': ['E501', 'W292']})
-            except:
-                pass
+            
+            if fixed == cleaned:
+                raise
+            
             exec(fixed, globals())
             
-    except Exception as e:
-        return f"EXEC_ERROR: {str(e)}"
+    finally:
+        # Restore stdout
+        sys.stdout = old_stdout
 
-    # PDF Generation Logic Check
-    # Check if a PDF file was created?
-    # Or call generate_pdf if defined?
+    # Check if a PDF was actually generated
+    import glob
+    pdfs = glob.glob("*.pdf")
     
-    if 'generate_pdf' in globals() and callable(globals()['generate_pdf']):
-        try:
-            globals()['generate_pdf']()
-        except Exception as e:
-             return f"GEN_ERROR: {str(e)}"
-    elif 'generate_pdf_bytes' in globals():
-         # If the user defined generate_pdf_bytes, we call it?
-         # But usually user defines generate_pdf() in their script.
-         val = globals()['generate_pdf_bytes'](cleaned, font_size_val)
-         return val
+    # If no PDF found, check if we captured any output
+    if not pdfs:
+        captured_text = redirected_output.getvalue()
+        if captured_text.strip():
+            # Generate PDF from captured text
+            pdf = FPDF()
+            pdf.add_page()
+            try:
+                pdf.set_font("Courier", size=int(font_size))
+            except:
+                pdf.set_font("Courier", size=12)
+            
+            pdf.multi_cell(0, 5, txt=captured_text)
+            pdf.output("output.pdf")
+            pdfs = ["output.pdf"]
+        else:
+            # HEURISTIC: Auto-Run (User forgot to call the function)
+            print("No output/PDF detected. checking for uncalled functions...")
+            import inspect
+            
+            # Find candidate functions
+            candidates = []
+            for name, obj in list(globals().items()):
+                if hasattr(obj, '__call__') and name not in ['old_globals', 'clean_code', 'FPDF', 'fpdf', 'StringIO', 'sys', 'os', 'glob', 're', 'patched_multi_cell', 'patched_normalize_text']:
+                     # Check if it was defined in user code (simple check: not built-in)
+                     if hasattr(obj, '__module__') and obj.__module__ is None: # Often None for exec'd code
+                         candidates.append(name)
+                     elif obj.__module__ == '__main__':
+                         candidates.append(name)
 
-    # Use FPDF/ReportLab check?
-    # Simple fallback: Return generated bytes if any?
-    # For now, let's assume the user code generates a file or outputs bytes.
-    # We need to capture the file.
+            # Execution Loop
+            pdf_generated = False
+            for name in candidates:
+                try:
+                    func = globals()[name]
+                    sig = inspect.signature(func)
+                    params = len(sig.parameters)
+                    
+                    print(f"Auto-attempting function: {name} with {params} args")
+                    
+                    if params == 0:
+                        func()
+                    elif params == 1:
+                        func("output.pdf")
+                    else:
+                        continue # Skip complex functions
+                    
+                    if glob.glob("*.pdf"):
+                        pdf_generated = True
+                        break
+                except Exception as ex:
+                    print(f"Attempt failed for {name}: {ex}")
+            
+            if pdf_generated:
+                pdfs = glob.glob("*.pdf")
+            else:
+                raise Exception("No PDF generated. Auto-fix attempts failed.")
+
+except Exception as e:
+    print(f"Execution failed ({e}), falling back to text conversion...")
     
-    return "SUCCESS"
+    # Fallback: Create PDF from text content
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Use Courier for code look
+    try:
+        pdf.set_font("Courier", size=int(font_size))
+    except:
+        pdf.set_font("Courier", size=12)
+        
+    # Write error message first so user knows WHY it failed
+    pdf.set_text_color(255, 0, 0)
+    pdf.multi_cell(0, 5, txt=f"ERROR: {str(e)}")
+    pdf.ln(5)
+    pdf.set_text_color(0, 0, 0)
 
-result = run_code_safely(code_to_run, font_size_val)
-result
-`;
+    # Multi_cell handles newlines automatically
+    # Effective page width = 210 - 2*10 (margins) = 190
+    pdf.multi_cell(0, 5, txt=user_code)
+    
+    pdf.output("output.pdf")
+            `);
 
-            const result = pyodide.runPython(pythonScript);
+            // Check for PDF
+            const pdfFiles = await pyodide.runPythonAsync(`
+import glob
+glob.glob("*.pdf")
+            `);
 
-            if (result && result.startsWith("EXEC_ERROR")) {
-                throw new Error("Execution Error: " + result.replace("EXEC_ERROR: ", ""));
+            const filesList = pdfFiles.toJs();
+
+            if (filesList.length === 0) {
+                throw new Error("No PDF file generated. Ensure your code saves a PDF (e.g. pdf.output('name.pdf'))");
             }
-            if (result && result.startsWith("GEN_ERROR")) {
-                throw new Error("PDF Generation Error: " + result.replace("GEN_ERROR: ", ""));
-            }
 
-            // Check for file system
-            try {
-                // List files
-                const files = pyodide.FS.readdir('.');
-                const pdfFile = files.find(f => f.endsWith('.pdf'));
+            const pdfFilename = filesList[0];
 
-                if (pdfFile) {
-                    const content = pyodide.FS.readFile(pdfFile);
-                    // Handle Download
-                    const blob = new Blob([content], { type: 'application/pdf' });
-                    const downloadUrl = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = downloadUrl;
-                    a.download = pdfFile; // Use generated filename
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    showToast('PDF Downloaded!', 'success');
+            // Read file bytes
+            const pdfBytes = pyodide.FS.readFile(pdfFilename);
 
-                    // Delete file
-                    pyodide.FS.unlink(pdfFile);
-                } else {
-                    // Check if result was bytes?
-                    if (result instanceof Uint8Array) {
-                        // handled
-                    } else {
-                        // Check stdout
-                        const stdout = pyodide.runPython("sys.stdout.getvalue()");
-                        if (stdout.trim()) {
-                            console.log("Python Output:", stdout);
-                            showToast('Code ran (Check Console for Output)', 'info');
-                        } else {
-                            showToast('No PDF generated and no output', 'warning');
-                        }
-                    }
-                }
-            } catch (fsErr) {
-                console.error(fsErr);
-            }
+            // Create Blob and Download
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filenameInput.value ? (filenameInput.value.endsWith('.pdf') ? filenameInput.value : filenameInput.value + '.pdf') : pdfFilename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+
+            showToast('PDF Generated Successfully!', 'success');
 
         } catch (error) {
-            console.error(error);
-            showToast('Generation failed: ' + error.message, 'error');
+            console.error('Error:', error);
+            // Pyodide errors can be verbose, try to get the message
+            let msg = error.message;
+            if (msg.includes("PythonClientError")) {
+                msg = "Python Execution Failed";
+            }
+            showToast(msg, 'error');
         } finally {
             stopLoading();
-            // Cleanup?
         }
     });
 
-    // --- Helper Functions ---
-
+    // Helper Functions
     function updateStats() {
         const text = codeInput.value;
-        statLines.textContent = text ? text.split('\n').length : 0;
-        statChars.textContent = text.length;
-        statWords.textContent = text.trim() ? text.trim().split(/\s+/).length : 0;
+        const lines = text ? text.split('\n').length : 0;
+        const chars = text.length;
+        const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+
+        statLines.textContent = lines;
+        statChars.textContent = chars;
+        statWords.textContent = words;
     }
 
     function updateLineNumbers() {
@@ -342,7 +444,6 @@ result
     }
 
     function showToast(message, type = 'info') {
-        const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
 
@@ -351,15 +452,14 @@ result
         if (type === 'error') icon = 'fa-exclamation-circle';
 
         toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+
+        const container = document.getElementById('toast-container');
         container.appendChild(toast);
 
+        // Remove after animation
         setTimeout(() => {
             toast.style.animation = 'fadeOut 0.3s forwards';
             setTimeout(() => toast.remove(), 300);
         }, 3000);
     }
-
-    // Initialize UI
-    updateStats();
-    updateLineNumbers();
 });
