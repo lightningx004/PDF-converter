@@ -262,10 +262,14 @@ with col1:
 
 with col2:
     if code:
-        # Tabbed interface for Output Actions
-        tab1, tab2 = st.tabs(["📄 Convert Source", "🚀 Run & Generate"])
+        # Determine if the code likely generates a PDF to highlight the right action
+        looks_like_generator = "fpdf" in code or "reportlab" in code or ".output(" in code or ".save()" in code
         
-        with tab1:
+        st.write("### Choose Action")
+        action_col1, action_col2 = st.columns(2)
+        
+        with action_col1:
+            st.info("Convert this source code text into a PDF document.")
             try:
                 if pdf_engine == "ReportLab":
                     pdf_bytes = generate_pdf_reportlab(code)
@@ -273,27 +277,32 @@ with col2:
                     pdf_bytes = generate_pdf(code)
                 
                 st.download_button(
-                    label="Download Source PDF",
+                    label="📄 Download Source Code PDF",
                     data=pdf_bytes,
                     file_name="source_code.pdf",
                     mime="application/pdf",
-                    key="download_source"
+                    key="download_source",
+                    use_container_width=True
                 )
             except Exception as e:
                 st.error(f"Error generating PDF: {e}")
 
-        with tab2:
-            if st.button("Run Code"):
+        with action_col2:
+            st.info("Execute this script and download the PDF it generates.")
+            run_btn = st.button("🚀 Run Script & Generate PDF", type="primary" if looks_like_generator else "secondary", use_container_width=True)
+            
+            if run_btn:
                 with st.spinner("Running code..."):
                     pdf_out, pdf_name, err = execute_code(code)
                     if pdf_out:
-                        st.success(f"Generated: {pdf_name}")
+                        st.success(f"Success! Generated: {pdf_name}")
                         st.download_button(
-                            label=f"Download {pdf_name}",
+                            label=f"⬇️ Download {pdf_name}",
                             data=pdf_out,
                             file_name=pdf_name,
                             mime="application/pdf",
-                            key="download_exec"
+                            key="download_exec",
+                            use_container_width=True
                         )
                     else:
                         st.error(err)
