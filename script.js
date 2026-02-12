@@ -196,11 +196,17 @@ def run_code_safely(user_code, font_size):
             fixed = re.sub(r'(:\\s*\\n\\s*)(?=[}\\]])', r': [],\\n', fixed)
             # 2. Handle "var =\n}" -> "var = []\n}"
             fixed = re.sub(r'(= \\s*\\n\\s*)(?=[}\\]])', r'= []\\n', fixed)
-            # 3. Specific fix for truncated assignment
+            
+            # 3. Specific fix for "QUESTIONS_DATA =" (Broadened)
+            # If we see "QUESTIONS_DATA =" followed by newline, assume it starts a list of dicts: "[{"
+            fixed = re.sub(r'(QUESTIONS_DATA\\s*=\\s*\\n)', r'\\1[{\\n', fixed)
+            
+            # 4. Old specific fix (kept as backup for other vars)
             fixed = re.sub(r'(\\w+\\s*=\\s*\\n\\s*)(?=\\},)', r'\\g<1>[{ # Auto-recovered start\\n', fixed)
-            # 4. Generic fix
+            
+            # 5. Generic fix
             fixed = re.sub(r'(\\w+\\s*=\\s*\\n\\s*)(?=[\\}\\]],?)', r'\\g<1>[] # Auto-filled\\n', fixed)
-            # 5. EOF Fixes
+            # 6. EOF Fixes
             fixed = re.sub(r'(:\\s*)$', r': []', fixed)
             fixed = re.sub(r'(= \\s*)$', r'= []', fixed)
             return fixed
