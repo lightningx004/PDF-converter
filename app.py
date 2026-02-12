@@ -101,24 +101,38 @@ def generate_pdf(code):
 with st.sidebar:
     st.header("🛠️ Debugger & Fixer")
     
-    if st.button("Check for Errors"):
-        errors = run_linter(st.session_state.code_input)
-        if errors and errors[0].startswith("No errors"):
-            st.success(errors[0])
-        else:
-            for err in errors:
-                st.error(err)
+    # Use columns to keep buttons side-by-side and always visible at the top
+    col_debug_1, col_debug_2 = st.columns(2)
+    
+    with col_debug_1:
+        check_btn = st.button("Check Errors")
+        
+    with col_debug_2:
+        fix_btn = st.button("Apply Fixes")
 
-    if st.button("Apply Fixes"):
+    # Container for error messages so they appear below the buttons
+    results_container = st.container()
+
+    if check_btn:
+        errors = run_linter(st.session_state.code_input)
+        with results_container:
+            if errors and errors[0].startswith("No errors"):
+                st.success(errors[0])
+            else:
+                st.warning(f"Found {len(errors)} issues:")
+                for err in errors:
+                    st.error(err)
+
+    if fix_btn:
         if st.session_state.code_input:
             fixed = auto_fix_code(st.session_state.code_input)
             if fixed != st.session_state.code_input:
                 st.session_state.code_input = fixed
-                st.rerun() # Force reload to show updated code
+                st.rerun()
             else:
-                st.info("Code is already PEP8 compliant.")
+                results_container.info("Code is already PEP8 compliant.")
         else:
-            st.warning("No code to fix.")
+            results_container.warning("No code to fix.")
 
 # --- Main Area (The Editor) ---
 st.title("🐍 Python Code to PDF Converter")
