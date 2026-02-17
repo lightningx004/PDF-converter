@@ -271,142 +271,78 @@ def propose_fix(e, code, line_num):
         return None
     
     lines = code.split('\\n')
-    
-    # Check for EOF error (line_num might be > len(lines))
-    if line_num > len(lines):
-        print(f"DEBUG: Line {line_num} > {len(lines)} (EOF?). Using last line.")
-        line_num = len(lines)
-
-    # Bounds check
-    if not line_num or line_num < 1:
-        return None
-        
-    line_index = line_num - 1
-    original_line = lines[line_index]
-    fixed_line = original_line
-    
     err_type = type(e).__name__
     msg = str(e)
     
-    # Strip comments for analysis
+    # --- GLOBAL FIXES (Scan the whole file) ---
+    
+    # 1. Check for unclosed parentheses/brackets across the whole file
+    # This is common: missing ')' on one line causes error on the next.
+    total_open_p = code.count('(') - code.count(')')
+    total_open_b = code.count('[') - code.count(']')
+    total_open_c = code.count('{') - code.count('}')
+    
+    if total_open_p > 0 or total_open_b > 0 or total_open_c > 0 or "unexpected EOF" in msg:
+        print(f"DEBUG: Found unclosed items: p={total_open_p}, b={total_open_b}, c={total_open_c}")
+        # Try to fix the line where the error happened, or the last line if EOF
+        target_idx = min(line_num - 1, len(lines) - 1) if line_num > 0 else len(lines) -1
+        if target_idx < 0: target_idx = 0
+        
+        fixed_line = lines[target_idx]
+        if total_open_p > 0: fixed_line += ")" * total_open_p
+        if total_open_b > 0: fixed_line += "]" * total_open_b
+        if total_open_c > 0: fixed_line += "}" * total_open_c
+        
+        lines[target_idx] = fixed_line
+        print(f"DEBUG: Global fix applied to line {target_idx+1}")
+        return "\\n".join(lines)
+
+    # 2. Check for unmatched quotes across whole file
+    if code.count("'") % 2 != 0 or code.count('"') % 2 != 0:
+        target_idx = min(line_num - 1, len(lines) - 1) if line_num > 0 else len(lines) -1
+        if target_idx < 0: target_idx = 0
+        fixed_line = lines[target_idx]
+        if lines[target_idx].count("'") % 2 != 0: fixed_line += "'"
+        elif lines[target_idx].count('"') % 2 != 0: fixed_line += '"'
+        lines[target_idx] = fixed_line
+        return "\\n".join(lines)
+
+    # --- LINE-SPECIFIC FIXES ---
+    if not line_num or line_num < 1:
+        return None
+    
+    line_index = min(line_num - 1, len(lines) - 1)
+    original_line = lines[line_index]
+    fixed_line = original_line
     content_no_comment = original_line.split('#')[0].strip()
-    print(f"DEBUG: Line content clean: '{content_no_comment}'")
 
     if err_type == "SyntaxError":
         import re
         # Missing Colon
-        # Check ends with: if, else, elif, for, while, def, class, try, except, finally
-        # Regex is safer to handle spaces/comments
-        # Removed \b to handle if(x)
         is_keyword = re.search(r'^(if|elif|else|for|while|def|class|try|except|finally)', content_no_comment)
-        has_colon = content_no_comment.endswith(':')
-        print(f"DEBUG: Keyword match: {is_keyword}, Has colon: {has_colon}")
-        
-        if is_keyword and not has_colon:
-             print("DEBUG: Applying Colon Fix")
+        if is_keyword and not content_no_comment.endswith(':'):
              fixed_line = original_line.rstrip() + ":"
-             
-        # Assignment in if (e.g. if x = 1)
+        # Assignment in if
         elif re.search(r'^if\s+.*[^=!<>]=', content_no_comment):
-             print("DEBUG: Applying Assignment Fix")
              fixed_line = original_line.replace("=", "==")
-        
-        # Incomplete Assignment (e.g. story =)
+        # Empty Assignment
         elif re.search(r'^\s*[a-zA-Z_]\w*\s*=\s*$', content_no_comment):
-             print("DEBUG: Applying Empty Assignment Fix")
              fixed_line = original_line.rstrip() + " None"
-
-        # Incomplete List/Tuple definition (e.g. modules = ,)
-        # Check for assignment with comma but no brackets/parens
-        elif "=" in content_no_comment and "," in content_no_comment and "[" not in content_no_comment and "(" not in content_no_comment:
-             print("DEBUG: Applying List Fix (wrapping in [])")
-             parts = original_line.split("=", 1)
-             if len(parts) == 2:
-                 fixed_line = f"{parts[0]}= [{parts[1].strip()}]"
-
-        # Unbalanced Parentheses
-        open_p = fixed_line.count('(')
-        close_p = fixed_line.count(')')
-        if open_p > close_p:
-            print("DEBUG: Applying Parentheses Fix")
-            fixed_line += ")" * (open_p - close_p)
-            
-        # Unbalanced Brackets
-        open_b = fixed_line.count('[')
-        close_b = fixed_line.count(']')
-        if open_b > close_b:
-            print("DEBUG: Applying Bracket Fix")
-            fixed_line += "]" * (open_b - close_b)
-            
-        # Unterminated String
-        # Count quotes to see if odd
-        if "EOL while scanning string literal" in msg or "unterminated string literal" in msg or fixed_line.count('"') % 2 != 0 or fixed_line.count("'") % 2 != 0:
-             print("DEBUG: Applying String Fix")
-             if fixed_line.count("'") % 2 != 0:
-                 fixed_line += "'"
-             elif fixed_line.count('"') % 2 != 0:
-                 fixed_line += '"'
-                 
-        # Missing parens for print (Python 3)
-        if re.match(r'^print\s+.*', content_no_comment) and not content_no_comment.startswith("print("):
-            print("DEBUG: Applying Print Fix")
-            # Extract content after print
-            match = re.match(r'^print\s+(.*)', content_no_comment)
-            if match:
-                content = match.group(1)
-                # preserve indentation of original line
-                indent = original_line[:len(original_line) - len(original_line.lstrip())]
-                fixed_line = f"{indent}print({content})"
+        # Smart Quotes
+        elif any(c in original_line for c in '“”‘’'):
+             fixed_line = original_line.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+        # NBSP / Tab
+        elif '\\xa0' in original_line: fixed_line = original_line.replace('\\xa0', ' ')
+        elif '\\t' in original_line: fixed_line = original_line.replace('\\t', '    ')
 
     elif err_type == "IndentationError":
-        # Unexpected Indent
-        if "unexpected indent" in msg:
-             print("DEBUG: Applying Unindent Fix")
-             fixed_line = original_line.lstrip()
-             
-        # Expected Indented Block
-        elif "expected an indented block" in msg:
-             print("DEBUG: Applying Indent Fix")
-             fixed_line = "    " + original_line
-             
-        # Unindent does not match (harder, try to align with prev line)
-        elif "unindent does not match" in msg:
-             print("DEBUG: Applying Align Fix")
-             # Find prev non-empty line to guess indent
-             prev_indent = ""
-             for i in range(line_index - 1, -1, -1):
-                 if lines[i].strip():
-                     prev_indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
-                     break
-             fixed_line = prev_indent + original_line.lstrip()
+        if "unexpected indent" in msg: fixed_line = original_line.lstrip()
+        elif "expected an indented block" in msg: fixed_line = "    " + original_line
 
     if fixed_line != original_line:
-        print(f"DEBUG: Fix generated: {fixed_line}")
-        lines[line_index] = fixed_line
-        return "\\n".join(lines)
-        
-    # Check for smart quotes if no other fix found
-    if '“' in original_line or '”' in original_line or '‘' in original_line or '’' in original_line:
-        print("DEBUG: Applying Smart Quote Fix")
-        fixed_line = original_line.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
         lines[line_index] = fixed_line
         return "\\n".join(lines)
 
-    # Check for Non-Breaking Spaces (NBSP) - Common in web copy-paste
-    if '\xa0' in original_line:
-        print("DEBUG: Applying NBSP Fix")
-        fixed_line = original_line.replace('\xa0', ' ')
-        lines[line_index] = fixed_line
-        return "\\n".join(lines)
-
-    # Check for Tabs (Python 3 hates mixed tabs/spaces)
-    if '\t' in original_line:
-        print("DEBUG: Applying Tab Fix")
-        fixed_line = original_line.replace('\t', '    ')
-        lines[line_index] = fixed_line
-        return "\\n".join(lines)
-
-    print("DEBUG: No fix generated.")
     return None
 
 result_obj = {"success": True, "error": None}
