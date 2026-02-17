@@ -354,8 +354,23 @@ def propose_fix(e, code, line_num):
         lines[line_index] = fixed_line
         return "\\n".join(lines)
 
-    print("DEBUG_AUTO_FIX: No specific fix found.")
+    # --- NUCLEAR FALLBACK (If no specific fix found but still SyntaxError) ---
+    if err_type == "SyntaxError":
+        print("DEBUG_AUTO_FIX: No specific fix hit. Running Nuclear Normalization.")
+        new_lines = []
+        for l in lines:
+            # Strip trailing space, normalize NBSP and Tabs
+            cleaned_l = l.rstrip().replace('\\xa0', ' ').replace('\\t', '    ')
+            # Replace Smart Quotes
+            cleaned_l = cleaned_l.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+            new_lines.append(cleaned_l)
+        
+        normalized_code = "\\n".join(new_lines)
+        if normalized_code != code:
+            print("DEBUG_AUTO_FIX: Nuclear Normalization generated a change!")
+            return normalized_code
 
+    print("DEBUG_AUTO_FIX: No specific fix found.")
     return None
 
 result_obj = {"success": True, "error": None}
