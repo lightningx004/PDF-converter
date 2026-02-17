@@ -572,6 +572,8 @@ glob.glob("*.pdf")
     let currentFixedCode = null;
 
     function showErrorModal(error) {
+        console.log('DEBUG_JS: Full Error Object:', error);
+
         document.getElementById('error-title').innerText = error.type || 'Error';
         document.getElementById('error-type').innerText = error.type || 'Error';
         document.getElementById('error-line').innerText = error.line ? `Line ${error.line}` : '';
@@ -580,6 +582,7 @@ glob.glob("*.pdf")
         document.getElementById('error-suggestion').innerText = error.suggestion || 'Check your code and try again.';
 
         currentFixedCode = error.fixed_code || null;
+        console.log('DEBUG_JS: currentFixedCode:', currentFixedCode);
 
         if (currentFixedCode) {
             autoFixBtn.classList.remove('hidden');
@@ -603,9 +606,18 @@ glob.glob("*.pdf")
     autoFixBtn.addEventListener('click', () => {
         if (currentFixedCode) {
             console.log('DEBUG_UI: Applying Fix...');
-            console.log('DEBUG_UI: Before:', codeInput.value);
-            codeInput.value = currentFixedCode;
-            console.log('DEBUG_UI: After:', codeInput.value);
+            const before = codeInput.value;
+            const after = currentFixedCode;
+
+            console.log('DEBUG_UI: Before (length):', before.length);
+            console.log('DEBUG_UI: After (length):', after.length);
+
+            if (before === after) {
+                console.warn('DEBUG_UI: Fixed code is IDENTICAL to current code. No change will be visible.');
+            }
+
+            codeInput.value = after;
+            codeInput.focus();
 
             // Dispatch input event to ensure all listeners (stats, line numbers) update
             codeInput.dispatchEvent(new Event('input'));
@@ -617,7 +629,7 @@ glob.glob("*.pdf")
             codeInput.scrollTop = codeInput.scrollHeight;
 
             errorModalOverlay.classList.add('hidden');
-            showToast('Code Fixed Automatically!', 'success');
+            showToast('Code Updated! Trying to fix error...', 'success');
         }
     });
 
