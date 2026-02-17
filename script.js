@@ -345,7 +345,7 @@ def propose_fix(e, code, line_num):
              print("DEBUG_AUTO_FIX: Correcting single = in condition (Relaxed Regex)")
              # Replace the first occurrence of " = " with " == ", careful not to touch strings if possible
              # Simple approach: Replace the first "=" that isn't part of a comparison
-             fixed_line = re.sub(r'([^=!<>])=([^=])', r'\1==\2', fixed_line, count=1)
+             fixed_line = re.sub(r'([^=!<>])=([^=])', r'\\1==\\2', fixed_line, count=1)
 
         # 2. Missing Colon
         if re.search(r'^(if|elif|else|for|while|def|class|try|except|finally)', content_no_comment) and not content_no_comment.endswith(':'):
