@@ -392,6 +392,20 @@ def propose_fix(e, code, line_num):
         lines[line_index] = fixed_line
         return "\\n".join(lines)
 
+    # Check for Non-Breaking Spaces (NBSP) - Common in web copy-paste
+    if '\xa0' in original_line:
+        print("DEBUG: Applying NBSP Fix")
+        fixed_line = original_line.replace('\xa0', ' ')
+        lines[line_index] = fixed_line
+        return "\\n".join(lines)
+
+    # Check for Tabs (Python 3 hates mixed tabs/spaces)
+    if '\t' in original_line:
+        print("DEBUG: Applying Tab Fix")
+        fixed_line = original_line.replace('\t', '    ')
+        lines[line_index] = fixed_line
+        return "\\n".join(lines)
+
     print("DEBUG: No fix generated.")
     return None
 
