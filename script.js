@@ -40,6 +40,7 @@ import re
 
 def clean_code(code, font_size=None):
     if not code: return ""
+    print(f"DEBUG_AUTO_FIX: Pre-cleaning code (Length: {len(code)})")
     
     # 0. Strip Invisible Gremlins (NBSP, BOM, Smart Quotes)
     code = code.replace('\xa0', ' ').replace('\t', '    ')
@@ -330,40 +331,43 @@ def propose_fix(e, code, line_num):
 
     if err_type == "SyntaxError":
         import re
-        if original_line.count(')') > original_line.count('('):
-            print("DEBUG_AUTO_FIX: Trimming extra closing parenthesis")
-            fixed_line = fixed_line.replace(')', '', 1)
-        
-        # Missing Colon
+        # 1. Comparison vs Assignment (MUCH safer regex)
+        # matches if, elif, while followed by something matching a single =
+        if re.search(r'^(if|elif|while)\s+', content_no_comment):
+            if re.search(r'[^=!<>]=([^=]|$)', content_no_comment):
+                 print("DEBUG_AUTO_FIX: Correcting single = in condition")
+                 fixed_line = re.sub(r'([^=!<>])=([^=]|$)', r'\1 == \2', fixed_line)
+
+        # 2. Missing Colon
         if re.search(r'^(if|elif|else|for|while|def|class|try|except|finally)', content_no_comment) and not content_no_comment.endswith(':'):
              print("DEBUG_AUTO_FIX: Applying Colon Fix")
              fixed_line = fixed_line.rstrip() + ":"
-        if re.search(r'^if\s+.*[^=!<>]=', content_no_comment):
-             print("DEBUG_AUTO_FIX: Applying Comparison Fix")
-             fixed_line = fixed_line.replace("=", "==")
 
-        # Empty Assignment
+        # 3. Empty Assignment
         if re.search(r'^\s*[a-zA-Z_]\w*\s*=\s*$', content_no_comment):
              print("DEBUG_AUTO_FIX: Applying None Assignment Fix")
              fixed_line = fixed_line.rstrip() + " None"
 
-        # Smart Quotes
+        # 4. Smart Quotes / NBSP / Tabs
         if any(c in fixed_line for c in '“”‘’'):
-             print("DEBUG_AUTO_FIX: Replacing Smart Quotes")
+             print("DEBUG_AUTO_FIX: Replacing Smart Quotes on line")
              fixed_line = fixed_line.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
-
-        # NBSP / Tab
-        if '\\xa0' in fixed_line: 
-             fixed_line = fixed_line.replace('\\xa0', ' ')
-        if '\\t' in fixed_line: 
-             fixed_line = fixed_line.replace('\\t', '    ')
+        
+        if '\xa0' in fixed_line: 
+             fixed_line = fixed_line.replace('\xa0', ' ')
+        if '\t' in fixed_line: 
+             fixed_line = fixed_line.replace('\t', '    ')
 
     elif err_type == "IndentationError":
-        if "unexpected indent" in msg: fixed_line = original_line.lstrip()
-        elif "expected an indented block" in msg: fixed_line = "    " + original_line
+        if "unexpected indent" in msg: 
+             fixed_line = fixed_line.lstrip()
+        elif "expected an indented block" in msg: 
+             fixed_line = "    " + fixed_line
 
     if fixed_line != original_line:
-        print(f"DEBUG_AUTO_FIX: Local fix generated for line {line_num}")
+        print(f"DEBUG_AUTO_FIX: Change on line {line_num}:")
+        print(f"  FROM: '{original_line}'")
+        print(f"  TO:   '{fixed_line}'")
         lines[line_index] = fixed_line
         return "\\n".join(lines)
 
