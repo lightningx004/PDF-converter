@@ -330,13 +330,22 @@ def propose_fix(e, code, line_num):
     content_no_comment = original_line.split('#')[0].strip()
 
     if err_type == "SyntaxError":
+    if err_type == "SyntaxError":
         import re
-        # 1. Comparison vs Assignment (MUCH safer regex)
-        # matches if, elif, while followed by something matching a single =
-        if re.search(r'^(if|elif|while)\s+', content_no_comment):
-            if re.search(r'[^=!<>]=([^=]|$)', content_no_comment):
-                 print("DEBUG_AUTO_FIX: Correcting single = in condition")
-                 fixed_line = re.sub(r'([^=!<>])=([^=]|$)', r'\1 == \2', fixed_line)
+        
+        # 0. SPECIFIC FIX: __name__ == "__main__"
+        # This is a very common error, so we hardcode a check for it.
+        if "if __name__" in original_line and "__main__" in original_line and "==" not in original_line:
+             print("DEBUG_AUTO_FIX: Hardcoded fix for __name__ == __main__")
+             fixed_line = original_line.replace("=", "==")
+
+        # 1. Comparison vs Assignment (Relaxed Regex)
+        # Matches if/elif/while followed by ANY assignment that isn't ==, !=, <=, >=
+        elif re.search(r'^\s*(if|elif|while)\s+.*[^=!<>]=', content_no_comment):
+             print("DEBUG_AUTO_FIX: Correcting single = in condition (Relaxed Regex)")
+             # Replace the first occurrence of " = " with " == ", careful not to touch strings if possible
+             # Simple approach: Replace the first "=" that isn't part of a comparison
+             fixed_line = re.sub(r'([^=!<>])=([^=])', r'\1==\2', fixed_line, count=1)
 
         # 2. Missing Colon
         if re.search(r'^(if|elif|else|for|while|def|class|try|except|finally)', content_no_comment) and not content_no_comment.endswith(':'):
