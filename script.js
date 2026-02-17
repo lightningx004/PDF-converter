@@ -267,6 +267,7 @@ def get_error_details(e, code=None, line_num=None):
     return {"explanation": explanation, "suggestion": suggestion}
 
 def propose_fix(e, code, line_num):
+    print(f"DEBUG_AUTO_FIX: Analyzing {type(e).__name__} at line {line_num}")
     if not code:
         return None
     
@@ -283,7 +284,7 @@ def propose_fix(e, code, line_num):
     total_open_c = code.count('{') - code.count('}')
     
     if total_open_p > 0 or total_open_b > 0 or total_open_c > 0 or "unexpected EOF" in msg:
-        print(f"DEBUG: Found unclosed items: p={total_open_p}, b={total_open_b}, c={total_open_c}")
+        print(f"DEBUG_AUTO_FIX: Global Scan Hit - Unclosed items p:{total_open_p}, b:{total_open_b}, c:{total_open_c}")
         # Try to fix the line where the error happened, or the last line if EOF
         target_idx = min(line_num - 1, len(lines) - 1) if line_num > 0 else len(lines) -1
         if target_idx < 0: target_idx = 0
@@ -294,11 +295,12 @@ def propose_fix(e, code, line_num):
         if total_open_c > 0: fixed_line += "}" * total_open_c
         
         lines[target_idx] = fixed_line
-        print(f"DEBUG: Global fix applied to line {target_idx+1}")
+        print(f"DEBUG_AUTO_FIX: Applied global fix to line {target_idx + 1}")
         return "\\n".join(lines)
 
     # 2. Check for unmatched quotes across whole file
     if code.count("'") % 2 != 0 or code.count('"') % 2 != 0:
+        print("DEBUG_AUTO_FIX: Global Scan Hit - Unmatched quotes")
         target_idx = min(line_num - 1, len(lines) - 1) if line_num > 0 else len(lines) -1
         if target_idx < 0: target_idx = 0
         fixed_line = lines[target_idx]
@@ -318,9 +320,17 @@ def propose_fix(e, code, line_num):
 
     if err_type == "SyntaxError":
         import re
+        # Extra closing items
+        if original_line.count(')') > original_line.count('('):
+            print("DEBUG_AUTO_FIX: Trimming extra closing parenthesis")
+            fixed_line = original_line.rsplit(')', 1)[0] + original_line.rsplit(')', 1)[1] if ')' in original_line else original_line
+        elif original_line.count(']') > original_line.count('['):
+            print("DEBUG_AUTO_FIX: Trimming extra closing bracket")
+            fixed_line = original_line.rsplit(']', 1)[0] + original_line.rsplit(']', 1)[1] if ']' in original_line else original_line
+
         # Missing Colon
-        is_keyword = re.search(r'^(if|elif|else|for|while|def|class|try|except|finally)', content_no_comment)
-        if is_keyword and not content_no_comment.endswith(':'):
+        elif re.search(r'^(if|elif|else|for|while|def|class|try|except|finally)', content_no_comment) and not content_no_comment.endswith(':'):
+             print("DEBUG_AUTO_FIX: Applying Colon Fix")
              fixed_line = original_line.rstrip() + ":"
         # Assignment in if
         elif re.search(r'^if\s+.*[^=!<>]=', content_no_comment):
@@ -340,8 +350,11 @@ def propose_fix(e, code, line_num):
         elif "expected an indented block" in msg: fixed_line = "    " + original_line
 
     if fixed_line != original_line:
+        print(f"DEBUG_AUTO_FIX: Local fix generated for line {line_num}")
         lines[line_index] = fixed_line
         return "\\n".join(lines)
+
+    print("DEBUG_AUTO_FIX: No specific fix found.")
 
     return None
 
