@@ -330,7 +330,6 @@ def propose_fix(e, code, line_num):
     content_no_comment = original_line.split('#')[0].strip()
 
     if err_type == "SyntaxError":
-    if err_type == "SyntaxError":
         import re
         
         # 0. SPECIFIC FIX: __name__ == "__main__"
