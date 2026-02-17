@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python to PDF Converter</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;600;700&display=swap"
+        rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+</head>
+
+<body>
+    <div class="background-globes">
+        <div class="globe globe-1"></div>
+        <div class="globe globe-2"></div>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="fade-in-stagger" style="--delay: 0.1s">
+            <div class="logo">
+                <i class="fa-solid fa-file-code fa-2x logo-icon"></i>
+                <div class="title-group">
+                    <h1>Python to PDF</h1>
+                    <p class="subtitle">Convert AI-generated code to PDF instantly</p>
+                </div>
+            </div>
+
+            <div class="actions">
+                <!-- Reset moved to bottom -->
+            </div>
+        </header>
+
+        <main>
+            <!-- Code Editor Section -->
+            <section class="editor-section fade-in-stagger" style="--delay: 0.2s">
+                <div class="editor-container glass-panel">
+                    <div class="editor-header">
+                        <span class="file-tab"><i class="fa-brands fa-python"></i> script.py</span>
+                        <!-- Stats moved to bottom -->
+                    </div>
+                    <div class="editor-body">
+                        <div class="line-numbers" id="line-numbers">1</div>
+                        <textarea id="code-input" spellcheck="false" placeholder="# Paste your Python code here...">
+# Python to PDF Converter
+from fpdf import FPDF
+
+# Create instance of FPDF class
+# Letter size: 215.9x279.4 mm
+pdf = FPDF(format='letter')
+
+# Add a page
+pdf.add_page()
+
+# Set font: Times, normal, 12 pt
+pdf.set_font("Times", size=12)
+
+# Add a cell
+pdf.cell(200, 10, txt="Hello World!", ln=1, align="C")
+
+# Output the PDF
+# pdf.output("simple_demo.pdf")
+</textarea>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Converter Controls & Stats -->
+            <section class="controls-section fade-in-stagger" style="--delay: 0.3s">
+
+                <!-- Inputs Row -->
+                <div class="glass-panel input-panel">
+                    <div class="control-group">
+                        <label>Filename</label>
+                        <div class="input-wrapper">
+                            <input type="text" id="filename-input" placeholder="python_code" value="python_code">
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Font Size</label>
+                        <div class="input-wrapper">
+                            <select id="fontsize-input">
+                                <option value="8">8pt</option>
+                                <option value="10">10pt</option>
+                                <option value="12" selected>12pt - Default</option>
+                                <option value="14">14pt</option>
+                                <option value="16">16pt</option>
+                                <option value="18">18pt</option>
+                                <option value="20">20pt</option>
+                                <option value="24">24pt</option>
+                            </select>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Buttons Row -->
+                <div class="action-row">
+                    <button id="convert-btn" class="btn btn-primary btn-block">
+                        <i class="fa-solid fa-download"></i>
+                        <span class="btn-text">Convert to PDF</span>
+                        <span class="btn-loader"></span>
+                    </button>
+
+                    <button id="reset-btn" class="btn btn-secondary">
+                        <i class="fa-solid fa-trash-can"></i> Clear Code
+                    </button>
+                </div>
+
+                <!-- Stats Row -->
+                <div class="stats-row">
+                    <div class="glass-panel stat-card">
+                        <span class="stat-value" id="stat-lines">0</span>
+                        <span class="stat-label">Lines</span>
+                    </div>
+                    <div class="glass-panel stat-card">
+                        <span class="stat-value" id="stat-chars">0</span>
+                        <span class="stat-label">Characters</span>
+                    </div>
+                    <div class="glass-panel stat-card">
+                        <span class="stat-value" id="stat-words">0</span>
+                        <span class="stat-label">Words</span>
+                    </div>
+                </div>
+
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Error Modal -->
+    <div id="error-modal-overlay" class="error-modal-overlay hidden">
+        <div class="error-modal">
+            <div class="modal-header">
+                <h3 id="error-title">Syntax Error</h3>
+                <button id="close-modal-btn" class="close-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="error-details">
+                    <span class="error-badge" id="error-type">SyntaxError</span>
+                    <span class="line-badge" id="error-line">Line 5</span>
+                </div>
+                <p class="error-message" id="error-message">Unexpected token: ')'</p>
+
+                <div class="error-section">
+                    <h4><i class="fa-solid fa-circle-question"></i> Why this happened:</h4>
+                    <p id="error-explanation">Python found a closing parenthesis that doesn't match an opening one.</p>
+                </div>
+
+                <div class="error-section suggestion-section">
+                    <h4><i class="fa-solid fa-lightbulb"></i> How to fix it:</h4>
+                    <p id="error-suggestion">Check for unmatched parentheses or an extra ')' on this line.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="auto-fix-btn" class="btn btn-fix hidden">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Fix Code
+                </button>
+                <button id="close-modal-btn-secondary" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
