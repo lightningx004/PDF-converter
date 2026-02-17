@@ -385,6 +385,13 @@ def propose_fix(e, code, line_num):
         lines[line_index] = fixed_line
         return "\\n".join(lines)
         
+    # Check for smart quotes if no other fix found
+    if '“' in original_line or '”' in original_line or '‘' in original_line or '’' in original_line:
+        print("DEBUG: Applying Smart Quote Fix")
+        fixed_line = original_line.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+        lines[line_index] = fixed_line
+        return "\\n".join(lines)
+
     print("DEBUG: No fix generated.")
     return None
 
