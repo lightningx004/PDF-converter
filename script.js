@@ -571,9 +571,16 @@ glob.glob("*.pdf")
 
     autoFixBtn.addEventListener('click', () => {
         if (currentFixedCode) {
+            console.log('DEBUG_UI: Applying Fix...');
+            console.log('DEBUG_UI: Before:', codeInput.value);
             codeInput.value = currentFixedCode;
+            console.log('DEBUG_UI: After:', codeInput.value);
+
             updateStats();
             updateLineNumbers();
+
+            // Force a scroll sync
+            codeInput.scrollTop = codeInput.scrollHeight;
 
             errorModalOverlay.classList.add('hidden');
             showToast('Code Fixed Automatically!', 'success');
