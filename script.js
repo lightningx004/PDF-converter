@@ -330,30 +330,33 @@ def propose_fix(e, code, line_num):
 
     if err_type == "SyntaxError":
         import re
-        # Extra closing items
         if original_line.count(')') > original_line.count('('):
             print("DEBUG_AUTO_FIX: Trimming extra closing parenthesis")
-            fixed_line = original_line.rsplit(')', 1)[0] + original_line.rsplit(')', 1)[1] if ')' in original_line else original_line
-        elif original_line.count(']') > original_line.count('['):
-            print("DEBUG_AUTO_FIX: Trimming extra closing bracket")
-            fixed_line = original_line.rsplit(']', 1)[0] + original_line.rsplit(']', 1)[1] if ']' in original_line else original_line
-
+            fixed_line = fixed_line.replace(')', '', 1)
+        
         # Missing Colon
-        elif re.search(r'^(if|elif|else|for|while|def|class|try|except|finally)', content_no_comment) and not content_no_comment.endswith(':'):
+        if re.search(r'^(if|elif|else|for|while|def|class|try|except|finally)', content_no_comment) and not content_no_comment.endswith(':'):
              print("DEBUG_AUTO_FIX: Applying Colon Fix")
-             fixed_line = original_line.rstrip() + ":"
-        # Assignment in if
-        elif re.search(r'^if\s+.*[^=!<>]=', content_no_comment):
-             fixed_line = original_line.replace("=", "==")
+             fixed_line = fixed_line.rstrip() + ":"
+        if re.search(r'^if\s+.*[^=!<>]=', content_no_comment):
+             print("DEBUG_AUTO_FIX: Applying Comparison Fix")
+             fixed_line = fixed_line.replace("=", "==")
+
         # Empty Assignment
-        elif re.search(r'^\s*[a-zA-Z_]\w*\s*=\s*$', content_no_comment):
-             fixed_line = original_line.rstrip() + " None"
+        if re.search(r'^\s*[a-zA-Z_]\w*\s*=\s*$', content_no_comment):
+             print("DEBUG_AUTO_FIX: Applying None Assignment Fix")
+             fixed_line = fixed_line.rstrip() + " None"
+
         # Smart Quotes
-        elif any(c in original_line for c in '“”‘’'):
-             fixed_line = original_line.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+        if any(c in fixed_line for c in '“”‘’'):
+             print("DEBUG_AUTO_FIX: Replacing Smart Quotes")
+             fixed_line = fixed_line.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+
         # NBSP / Tab
-        elif '\\xa0' in original_line: fixed_line = original_line.replace('\\xa0', ' ')
-        elif '\\t' in original_line: fixed_line = original_line.replace('\\t', '    ')
+        if '\\xa0' in fixed_line: 
+             fixed_line = fixed_line.replace('\\xa0', ' ')
+        if '\\t' in fixed_line: 
+             fixed_line = fixed_line.replace('\\t', '    ')
 
     elif err_type == "IndentationError":
         if "unexpected indent" in msg: fixed_line = original_line.lstrip()
