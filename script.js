@@ -147,6 +147,13 @@ from fpdf import FPDF
 # Enhanced Error Analysis
 
 # Enhanced Error Analysis
+
+def clean_code(code, font_size=None):
+    # Remove invisible characters that might cause SyntaxError
+    if not code: return ""
+    # Zero-width space, non-joiner, joiner, BOM
+    return code.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '').replace('\ufeff', '')
+
 def get_error_details(e, code=None, line_num=None):
     err_type = type(e).__name__
     msg = str(e)
