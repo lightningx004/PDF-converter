@@ -277,35 +277,39 @@ def propose_fix(e, code, line_num):
     
     # --- GLOBAL FIXES (Scan the whole file) ---
     
-    # 1. Check for unclosed parentheses/brackets across the whole file
-    # This is common: missing ')' on one line causes error on the next.
+    # 1. Check for mismatched parentheses/brackets/braces
     total_open_p = code.count('(') - code.count(')')
     total_open_b = code.count('[') - code.count(']')
     total_open_c = code.count('{') - code.count('}')
     
-    if total_open_p > 0 or total_open_b > 0 or total_open_c > 0 or "unexpected EOF" in msg:
-        print(f"DEBUG_AUTO_FIX: Global Scan Hit - Unclosed items p:{total_open_p}, b:{total_open_b}, c:{total_open_c}")
-        # Try to fix the line where the error happened, or the last line if EOF
-        target_idx = min(line_num - 1, len(lines) - 1) if line_num > 0 else len(lines) -1
+    if total_open_p != 0 or total_open_b != 0 or total_open_c != 0 or "unexpected EOF" in msg:
+        print(f"DEBUG_AUTO_FIX: Global Scan Hit - Mismatch p:{total_open_p}, b:{total_open_b}, c:{total_open_c}")
+        target_idx = min(line_num - 1, len(lines) - 1) if line_num > 0 else len(lines) - 1
         if target_idx < 0: target_idx = 0
         
         fixed_line = lines[target_idx]
+        # Missing closures
         if total_open_p > 0: fixed_line += ")" * total_open_p
         if total_open_b > 0: fixed_line += "]" * total_open_b
         if total_open_c > 0: fixed_line += "}" * total_open_c
         
+        # Extra closures (Simple removal)
+        if total_open_p < 0: fixed_line = fixed_line.replace(')', '', abs(total_open_p))
+        if total_open_b < 0: fixed_line = fixed_line.replace(']', '', abs(total_open_b))
+        if total_open_c < 0: fixed_line = fixed_line.replace('}', '', abs(total_open_c))
+        
         lines[target_idx] = fixed_line
-        print(f"DEBUG_AUTO_FIX: Applied global fix to line {target_idx + 1}")
+        print(f"DEBUG_AUTO_FIX: Applied global mismatch fix to line {target_idx + 1}")
         return "\\n".join(lines)
 
     # 2. Check for unmatched quotes across whole file
     if code.count("'") % 2 != 0 or code.count('"') % 2 != 0:
         print("DEBUG_AUTO_FIX: Global Scan Hit - Unmatched quotes")
-        target_idx = min(line_num - 1, len(lines) - 1) if line_num > 0 else len(lines) -1
+        target_idx = min(line_num - 1, len(lines) - 1) if line_num > 0 else len(lines) - 1
         if target_idx < 0: target_idx = 0
         fixed_line = lines[target_idx]
-        if lines[target_idx].count("'") % 2 != 0: fixed_line += "'"
-        elif lines[target_idx].count('"') % 2 != 0: fixed_line += '"'
+        if code.count("'") % 2 != 0: fixed_line += "'"
+        elif code.count('"') % 2 != 0: fixed_line += '"'
         lines[target_idx] = fixed_line
         return "\\n".join(lines)
 
