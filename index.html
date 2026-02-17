@@ -50,26 +50,8 @@
                     </div>
                     <div class="editor-body">
                         <div class="line-numbers" id="line-numbers">1</div>
-                        <textarea id="code-input" spellcheck="false" placeholder="# Paste your Python code here...">
-# Python to PDF Converter
-from fpdf import FPDF
-
-# Create instance of FPDF class
-# Letter size: 215.9x279.4 mm
-pdf = FPDF(format='letter')
-
-# Add a page
-pdf.add_page()
-
-# Set font: Times, normal, 12 pt
-pdf.set_font("Times", size=12)
-
-# Add a cell
-pdf.cell(200, 10, txt="Hello World!", ln=1, align="C")
-
-# Output the PDF
-# pdf.output("simple_demo.pdf")
-</textarea>
+                        <textarea id="code-input" spellcheck="false"
+                            placeholder="# Paste your Python code here..."></textarea>
                     </div>
                 </div>
             </section>
